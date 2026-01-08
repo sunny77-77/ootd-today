@@ -1,983 +1,1035 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>今天穿什麼 (OOTD)</title>
-    
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
-    <!-- Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Lucide Icons (Vanilla) -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
-
-    <!-- Tailwind Config for Custom Animations -->
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['"Noto Sans TC"', 'sans-serif'],
-                    },
-                    animation: {
-                        'fade-in': 'fadeIn 0.4s ease-out forwards',
-                    },
-                    keyframes: {
-                        fadeIn: {
-                            '0%': { opacity: '0', transform: 'translateY(10px)' },
-                            '100%': { opacity: '1', transform: 'translateY(0)' },
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-
-    <style>
-        /* Custom Scrollbar Hide Utility */
-        .scrollbar-hide::-webkit-scrollbar {
-            display: none;
-        }
-        .scrollbar-hide {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-    </style>
-</head>
-<body class="bg-[#F8FAFC]">
-    <div id="root"></div>
-
-    <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
-
-        // --- Icon Shim for Lucide in Browser ---
-        const createLucideIcon = (iconName) => {
-            return ({ size = 24, className, ...props }) => {
-                const iconData = lucide.icons[iconName];
-                if (!iconData) return null;
-                return (
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width={size}
-                        height={size}
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className={className}
-                        {...props}
-                    >
-                        {iconData.map((child, index) => {
-                            const [tag, attrs] = child;
-                            return React.createElement(tag, { key: index, ...attrs });
-                        })}
-                    </svg>
-                );
-            };
-        };
-
-        // Initialize Icons used in the app
-        const Shirt = createLucideIcon('Shirt');
-        const Plus = createLucideIcon('Plus');
-        const LayoutGrid = createLucideIcon('LayoutGrid');
-        const CloudRain = createLucideIcon('CloudRain');
-        const Sun = createLucideIcon('Sun');
-        const Trash2 = createLucideIcon('Trash2');
-        const Check = createLucideIcon('Check');
-        const X = createLucideIcon('X');
-        const Calendar = createLucideIcon('Calendar');
-        const Thermometer = createLucideIcon('Thermometer');
-        const Umbrella = createLucideIcon('Umbrella');
-        const Heart = createLucideIcon('Heart');
-        const Sparkles = createLucideIcon('Sparkles');
-        const Loader2 = createLucideIcon('Loader2');
-        const Snowflake = createLucideIcon('Snowflake');
-        const Wind = createLucideIcon('Wind');
-        const SunMedium = createLucideIcon('SunMedium');
-        const Droplets = createLucideIcon('Droplets');
-        const MapPin = createLucideIcon('MapPin');
-        const Pencil = createLucideIcon('Pencil');
-        const Clock = createLucideIcon('Clock');
-        const Filter = createLucideIcon('Filter');
-        const AlertCircle = createLucideIcon('AlertCircle');
-        const Camera = createLucideIcon('Camera');
-        const ChevronLeft = createLucideIcon('ChevronLeft');
-        const ThumbsUp = createLucideIcon('ThumbsUp');
-        const Star = createLucideIcon('Star');
-        const Globe = createLucideIcon('Globe');
-        const ChevronDown = createLucideIcon('ChevronDown');
-
-
-        // --- Gemini API Configuration ---
-        const apiKey = ""; // API Key 會在執行環境中被注入，或者由使用者輸入
-
-        // Helper to get API Key (Env -> LocalStorage -> Prompt)
-        const getEffectiveApiKey = () => {
-            if (apiKey && apiKey.length > 0) return apiKey;
-            
-            const stored = localStorage.getItem('gemini_api_key');
-            if (stored) return stored;
-
-            const input = prompt("請輸入您的 Google Gemini API Key 以使用 AI 功能：\n(它將會被暫存在您的瀏覽器中)");
-            if (input) {
-                localStorage.setItem('gemini_api_key', input);
-                return input;
-            }
-            return null;
-        };
-
-        // --- Constants & Helpers ---
-        const LOCATIONS = [
-            { country: "台灣", name: "台北市", minTemp: 22, maxTemp: 26, rainProb: 60 },
-            { country: "台灣", name: "台中市", minTemp: 24, maxTemp: 30, rainProb: 10 },
-            { country: "台灣", name: "高雄市", minTemp: 26, maxTemp: 32, rainProb: 5 },
-            { country: "日本", name: "東京", minTemp: 15, maxTemp: 20, rainProb: 30 },
-            { country: "韓國", name: "首爾", minTemp: 10, maxTemp: 18, rainProb: 0 },
-        ];
-
-        const SEASONS = [
-            { id: 'summer', label: '夏', desc: '> 25°C', icon: SunMedium, color: 'bg-orange-50 text-orange-500 border-orange-100' },
-            { id: 'spring_autumn', label: '春/秋', desc: '20-25°C', icon: Wind, color: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
-            { id: 'winter', label: '冬', desc: '< 20°C', icon: Snowflake, color: 'bg-sky-50 text-sky-600 border-sky-100' },
-        ];
-
-        const SEASON_CONFIG = {
-            summer: { months: [5, 6, 7, 8], minTemp: 26 },
-            spring_autumn: { months: [3, 4, 9, 10], minTemp: 20, maxTemp: 25 },
-            winter: { months: [11, 0, 1, 2], maxTemp: 19 }
-        };
-
-        const COLORS = [
-            { id: 'red', hex: "#F87171", label: "紅" },
-            { id: 'orange', hex: "#FB923C", label: "橙" },
-            { id: 'yellow', hex: "#FACC15", label: "黃" },
-            { id: 'green', hex: "#4ADE80", label: "綠" },
-            { id: 'blue', hex: "#60A5FA", label: "藍" },
-            { id: 'purple', hex: "#C084FC", label: "紫" },
-            { id: 'pink', hex: "#F472B6", label: "粉" },
-            { id: 'brown', hex: "#A16207", label: "棕" },
-            { id: 'white', hex: "#ffffff", label: "白" },
-            { id: 'gray', hex: "#94A3B8", label: "灰" },
-            { id: 'black', hex: "#1E293B", label: "黑" },
-        ];
-
-        const INITIAL_OUTFITS = [
-            {
-                id: 1,
-                image: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500&q=80",
-                seasons: ['winter', 'spring_autumn'],
-                isNotRainFriendly: true, 
-                colors: ['pink', 'white'], 
-                lastWorn: new Date().toISOString(),
-                highlight: "溫柔粉色針織衫搭簡約下身，展現甜美氣質，約會首選！💕"
-            },
-            {
-                id: 2,
-                image: "https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?w=500&q=80",
-                seasons: ['spring_autumn', 'summer'],
-                isNotRainFriendly: false,
-                colors: ['white', 'gray'],
-                lastWorn: new Date().toISOString(),
-                highlight: "清爽俐落的淺色套裝，上班休閒兩相宜，展現知性美感✨"
-            }
-        ];
-
-        // Helper to strip markdown code blocks from JSON string
-        const cleanJsonString = (str) => {
-            if (!str) return "{}";
-            return str.replace(/```json/g, '').replace(/```/g, '').trim();
-        };
-
-        // --- Sub-components ---
-
-        const SeasonBadge = ({ seasonId, minimal = false }) => {
-            const s = SEASONS.find(x => x.id === seasonId);
-            const Icon = s ? s.icon : null;
-            return s ? <span className={`inline-flex items-center gap-1 rounded-full font-medium ${s.color} ${minimal ? 'px-2 py-0.5 text-[10px]' : 'px-3 py-1 text-xs'}`}>{!minimal && <Icon size={12}/>}{s.label}</span> : null;
-        };
-
-        const EmptyState = ({ message, subMessage, action }) => (
-            <div className="flex flex-col items-center justify-center py-20 px-8 text-center animate-fade-in bg-white rounded-3xl border border-slate-100 mx-4 mt-8 shadow-sm">
-                <div className="w-24 h-24 bg-cyan-50 rounded-full flex items-center justify-center mb-6 text-cyan-500">
-                    <Shirt size={48} strokeWidth={1.5} />
-                </div>
-                <h3 className="text-xl font-bold text-slate-800 mb-3">{message}</h3>
-                <p className="text-slate-500 text-sm mb-8 max-w-xs leading-relaxed">{subMessage}</p>
-                <button onClick={action} className="bg-cyan-500 hover:bg-cyan-600 text-white px-8 py-3.5 rounded-full font-bold shadow-lg shadow-cyan-200 transition-all flex items-center gap-2">
-                    <Plus size={20} /> 新增第一套
-                </button>
-            </div>
-        );
-
-        const TabBarDesktop = ({ view, onViewChange }) => (
-            <div className="flex gap-4">
-                <button onClick={() => onViewChange('home')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full transition-all ${view === 'home' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}>
-                    <LayoutGrid size={18} /> 今日穿搭
-                </button>
-                <button onClick={() => onViewChange('create', true)} className={`flex items-center gap-2 px-6 py-2.5 rounded-full transition-all ${view === 'create' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}>
-                    <Plus size={18} /> 新增
-                </button>
-                <button onClick={() => onViewChange('manage')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full transition-all ${view === 'manage' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}>
-                    <Shirt size={18} /> 全部穿搭
-                </button>
-            </div>
-        );
-
-        const TabBarMobile = ({ view, onViewChange }) => (
-            <div className="fixed bottom-0 left-0 right-0 h-[84px] bg-white/95 backdrop-blur-md border-t border-slate-100 z-50 grid grid-cols-3 items-start pt-3 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] md:hidden">
-                <button onClick={() => onViewChange('home')} className={`flex flex-col items-center justify-center gap-1 transition-all ${view === 'home' ? 'text-cyan-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                    <LayoutGrid size={24} strokeWidth={view === 'home' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium tracking-wide">今日穿搭</span>
-                </button>
-                
-                <div className="flex justify-center -mt-8">
-                    <button onClick={() => onViewChange('create', true)} className={`w-16 h-16 rounded-full flex items-center justify-center shadow-xl transition-all transform active:scale-95 ${view === 'create' ? 'bg-cyan-600 text-white' : 'bg-cyan-500 text-white hover:bg-cyan-600'}`}>
-                        <Plus size={32} strokeWidth={3} />
-                    </button>
-                </div>
-
-                <button onClick={() => onViewChange('manage')} className={`flex flex-col items-center justify-center gap-1 transition-all ${view === 'manage' ? 'text-cyan-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                    <Shirt size={24} strokeWidth={view === 'manage' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium tracking-wide">全部穿搭</span>
-                </button>
-            </div>
-        );
-
-        // --- Main App Component ---
-        function App() {
-            const [view, setView] = useState('home'); 
-            const [lastView, setLastView] = useState('home'); 
-            const [outfits, setOutfits] = useState(INITIAL_OUTFITS);
-            
-            // Weather State
-            const [locationIndex, setLocationIndex] = useState(0);
-            const weather = LOCATIONS[locationIndex];
-            const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
-            
-            const [selectedOutfitId, setSelectedOutfitId] = useState(null);
-            const [viewState, setViewState] = useState('browsing'); 
-            
-            // Filter States
-            const [homeFilterColor, setHomeFilterColor] = useState(null);
-            
-            const [showFilters, setShowFilters] = useState(false);
-            const [manageFilterColor, setManageFilterColor] = useState(null);
-            const [manageFilterSeason, setManageFilterSeason] = useState(null);
-            const [manageFilterRainFriendly, setManageFilterRainFriendly] = useState(false);
-
-            // Delete Modal State
-            const [deleteId, setDeleteId] = useState(null);
-
-            // AI States
-            const [isAnalyzing, setIsAnalyzing] = useState(false);
-            const [aiFeedback, setAiFeedback] = useState(null); 
-            const [isGeneratingComment, setIsGeneratingComment] = useState(false);
-            
-            // Form State
-            const [newOutfit, setNewOutfit] = useState({
-                id: null, 
-                image: "",
-                seasons: [], 
-                isNotRainFriendly: false, 
-                colors: [],
-                highlight: ""
-            });
-            const [isFormDirty, setIsFormDirty] = useState(false);
-
-            // --- CORE FUNCTIONS ---
-
-            const toggleSeason = (seasonId) => {
-                setNewOutfit(prev => {
-                const exists = prev.seasons && prev.seasons.includes(seasonId);
-                if (exists) return { ...prev, seasons: prev.seasons.filter(s => s !== seasonId) };
-                else return { ...prev, seasons: [...(prev.seasons || []), seasonId] };
-                });
-                setIsFormDirty(true);
-            };
-
-            const toggleColor = (colorId) => {
-                setNewOutfit(prev => {
-                    const exists = prev.colors && prev.colors.includes(colorId);
-                    if (exists) return { ...prev, colors: prev.colors.filter(c => c !== colorId) };
-                    else return { ...prev, colors: [...(prev.colors || []), colorId] };
-                });
-                setIsFormDirty(true);
-            };
-
-            const updateNewOutfit = (updates) => {
-                setNewOutfit(prev => ({ ...prev, ...updates }));
-                setIsFormDirty(true);
-            };
-
-            // Load from local storage
-            useEffect(() => {
-                const saved = localStorage.getItem('ootd_outfits');
-                if (saved) {
-                    try {
-                        setOutfits(JSON.parse(saved));
-                    } catch (e) {
-                        console.error("Failed to parse saved outfits", e);
-                    }
-                }
-            }, []);
-
-            // Save to local storage
-            useEffect(() => {
-                localStorage.setItem('ootd_outfits', JSON.stringify(outfits));
-            }, [outfits]);
-
-            // Smart Default for Create Mode
-            useEffect(() => {
-                if (view === 'create' && (!newOutfit.seasons || newOutfit.seasons.length === 0) && !newOutfit.id) {
-                    const currentMonth = new Date().getMonth(); 
-                    let suggestedSeason = '';
-                    if (SEASON_CONFIG.summer.months.includes(currentMonth)) suggestedSeason = 'summer';
-                    else if (SEASON_CONFIG.spring_autumn.months.includes(currentMonth)) suggestedSeason = 'spring_autumn';
-                    else suggestedSeason = 'winter';
-                    if (suggestedSeason) {
-                        setNewOutfit(prev => ({ ...prev, seasons: [suggestedSeason] }));
-                    }
-                }
-            }, [view, newOutfit.id]);
-
-            // Navigation Guard
-            const handleViewChange = (targetView, resetForm = false) => {
-                // 原本的確認視窗已移除，允許直接切換
-                
-                if (view !== 'create') {
-                    setLastView(view); 
-                }
-
-                if (resetForm) {
-                    setNewOutfit({ id: null, image: "", seasons: [], isNotRainFriendly: false, colors: [], highlight: "" });
-                    setIsFormDirty(false);
-                }
-                
-                setView(targetView);
-                setIsFormDirty(false);
-            };
-
-            const handleCancelCreate = () => {
-                // 原本的確認視窗已移除，允許直接取消
-                setIsFormDirty(false);
-                setView(lastView); 
-            };
-
-            // --- Recommendations Logic ---
-            const { homeRecommendations, availableColors } = useMemo(() => {
-                const avgTemp = (weather.minTemp + weather.maxTemp) / 2;
-                const currentMonth = new Date().getMonth();
-                const targetSeasons = new Set();
-                
-                if (avgTemp > 25) targetSeasons.add('summer');
-                else if (avgTemp >= 20) targetSeasons.add('spring_autumn');
-                else targetSeasons.add('winter');
-
-                if (SEASON_CONFIG.summer.months.includes(currentMonth)) targetSeasons.add('summer');
-                else if (SEASON_CONFIG.spring_autumn.months.includes(currentMonth)) targetSeasons.add('spring_autumn');
-                else targetSeasons.add('winter');
-
-                let base = outfits.filter(o => {
-                    const seasonMatch = o.seasons && o.seasons.some(s => targetSeasons.has(s));
-                    let rainMatch = true;
-                    // Auto rain filter logic (smart recommendation)
-                    if (weather.rainProb > 50) {
-                        rainMatch = !o.isNotRainFriendly;
-                    }
-                    return seasonMatch && rainMatch;
-                });
-
-                if (base.length === 0 && weather.rainProb > 50) {
-                    // Relax rain rule if nothing found
-                    base = outfits.filter(o => o.seasons && o.seasons.some(s => targetSeasons.has(s)));
-                }
-                if (base.length === 0 && outfits.length > 0) {
-                    base = [...outfits];
-                }
-
-                const colorsInBase = new Set();
-                base.forEach(o => o.colors?.forEach(c => colorsInBase.add(c)));
-
-                let final = base;
-                if (homeFilterColor) {
-                    final = base.filter(o => o.colors && o.colors.includes(homeFilterColor));
-                }
-
-                // Sort by most recently added
-                final.sort((a, b) => b.id - a.id);
-                
-                return { homeRecommendations: final, availableColors: Array.from(colorsInBase) };
-            }, [outfits, weather, homeFilterColor]); 
-
-            // --- Manage Logic ---
-            const manageList = useMemo(() => {
-                let filtered = outfits.filter(o => {
-                    let match = true;
-                    if (manageFilterColor && (!o.colors || !o.colors.includes(manageFilterColor))) match = false;
-                    if (manageFilterSeason && (!o.seasons || !o.seasons.includes(manageFilterSeason))) match = false;
-                    if (manageFilterRainFriendly && o.isNotRainFriendly) match = false;
-                    return match;
-                });
-                return filtered.sort((a, b) => b.id - a.id);
-            }, [outfits, manageFilterColor, manageFilterSeason, manageFilterRainFriendly]);
-
-            const activeFilterCount = useMemo(() => {
-                let count = 0;
-                if (manageFilterColor) count++;
-                if (manageFilterSeason) count++;
-                if (manageFilterRainFriendly) count++;
-                return count;
-            }, [manageFilterColor, manageFilterSeason, manageFilterRainFriendly]);
-
-            // --- Actions ---
-
-            const handleSelectOutfit = (id) => {
-                // Selection disabled for pure browsing mode
-            };
-
-            const confirmSelection = () => {
-                if (!selectedOutfitId) return;
-                setViewState('result');
-                handleAIFeedback(outfits.find(o => o.id === selectedOutfitId));
-            };
-
-            const resetSelection = () => {
-                setViewState('browsing');
-            };
-
-            const confirmDelete = () => {
-                if (deleteId) {
-                    setOutfits(outfits.filter(o => o.id !== deleteId));
-                    setDeleteId(null);
-                }
-            };
-
-            const handleEdit = (outfit, e) => {
-                e.stopPropagation();
-                setLastView(view); 
-                setNewOutfit({
-                    id: outfit.id,
-                    image: outfit.image,
-                    seasons: outfit.seasons || [],
-                    isNotRainFriendly: outfit.isNotRainFriendly || false,
-                    colors: outfit.colors || [],
-                    highlight: outfit.highlight || ""
-                });
-                setIsFormDirty(false);
-                setView('create');
-            };
-
-            const handleSave = () => {
-                if (!newOutfit.image) return alert("請上傳圖片");
-                if (!newOutfit.seasons || newOutfit.seasons.length === 0) return alert("請至少選擇一個季節");
-
-                if (newOutfit.id) {
-                    const updated = outfits.map(o => o.id === newOutfit.id ? newOutfit : o);
-                    setOutfits(updated);
-                } else {
-                    const created = {
-                    ...newOutfit,
-                    id: Date.now(),
-                    };
-                    setOutfits([...outfits, created]);
-                }
-                
-                setIsFormDirty(false);
-                setNewOutfit({ id: null, image: "", seasons: [], isNotRainFriendly: false, colors: [], highlight: "" });
-                setView('manage'); 
-            };
-
-            const handleImageUpload = (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => updateNewOutfit({ image: reader.result });
-                    reader.readAsDataURL(file);
-                }
-            };
-
-            // --- AI ---
-            const handleAIAnalyze = async () => {
-                const effectiveKey = getEffectiveApiKey();
-                if (!effectiveKey) return; // User cancelled prompt
-
-                if (!newOutfit.image) return alert("請先上傳圖片！");
-                setIsAnalyzing(true);
-                try {
-                    const prompt = `分析圖片: 季節(summer/spring_autumn/winter), 色系(${COLORS.map(c=>c.id).join(',')})。並用繁體中文寫1句簡短的「穿搭亮點」(highlight)，例如：「甜美的粉色系搭配，適合約會！」(15字以內)。回傳JSON格式。`;
-                    const jsonStr = await generateGeminiContent(effectiveKey, prompt, newOutfit.image, true);
-                    const result = JSON.parse(cleanJsonString(jsonStr)); 
-                    updateNewOutfit({
-                        seasons: result.seasons || newOutfit.seasons,
-                        colors: result.colors || newOutfit.colors,
-                        highlight: result.highlight || ""
-                    });
-                } catch (e) {
-                    console.error("AI Analyze Error:", e);
-                    alert("AI 分析失敗，請檢查 API Key 或網路連線");
-                } finally {
-                    setIsAnalyzing(false);
-                }
-            };
-
-            const generateGeminiContent = async (key, prompt, imageBase64 = null, returnJson = false) => {
-                try {
-                    const payload = {
-                        contents: [{ parts: [{ text: prompt }, ...(imageBase64 && imageBase64.includes(',') ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64.split(',')[1] } }] : [])] }]
-                    };
-                    if (returnJson) {
-                        if (prompt.includes("分析圖片")) {
-                            payload.generationConfig = { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { seasons: { type: "ARRAY", items: { type: "STRING", enum: ["summer", "spring_autumn", "winter"] } }, colors: { type: "ARRAY", items: { type: "STRING", enum: COLORS.map(c => c.id) } }, highlight: { type: "STRING" } } } };
-                        } else {
-                            payload.generationConfig = { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { compliment: { type: "STRING" }, highlight: { type: "STRING" } } } };
-                        }
-                    }
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    const data = await response.json();
-                    if (!response.ok) throw new Error(data.error?.message || "API Request Failed");
-                    return data.candidates[0].content.parts[0].text;
-                } catch (error) {
-                    console.error(error); throw error;
-                }
-            };
-
-            const handleAIFeedback = async (outfit) => {
-                const effectiveKey = getEffectiveApiKey();
-                if (!effectiveKey) return; 
-
-                setIsGeneratingComment(true);
-                try {
-                    const prompt = `
-                    現在${weather.name}天氣${weather.minTemp}-${weather.maxTemp}度，降雨機率${weather.rainProb}%。
-                    這套衣服包含：${outfit.seasons.join(',')}季, 顏色:${outfit.colors.join(',')}。
-                    請針對這套穿搭進行點評，回傳 JSON 格式：
-                    { 
-                        "compliment": "一句充滿熱情、情緒價值的誇獎(30-50字)", 
-                        "highlight": "這套穿搭的一個具體亮點或特色分析(30字)" 
-                    }。
-                    請用繁體中文，語氣極度正面、鼓勵，加上emoji。
-                    `;
-                    const jsonStr = await generateGeminiContent(effectiveKey, prompt, null, true);
-                    const result = JSON.parse(cleanJsonString(jsonStr)); 
-                    setAiFeedback(result);
-                } catch (e) {
-                    console.error("AI Feedback Error:", e);
-                    setAiFeedback({ compliment: "這套穿搭太棒了，簡直是為你量身打造的！", highlight: "自信就是你最好的時尚單品！" });
-                } finally {
-                    setIsGeneratingComment(false);
-                }
-            };
-
-            // Dynamic visual stats logic for gradient bars
-            const tempRangeLeft = Math.max(0, Math.min(100, ((weather.minTemp - 0) / 40) * 100));
-            const tempRangeRight = Math.max(0, Math.min(100, ((40 - weather.maxTemp) / 40) * 100));
-
-            return (
-                <div className="min-h-screen bg-[#F8FAFC] text-slate-700 font-sans pb-28 md:pb-10 relative overflow-hidden">
-                    {/* Cool Toned Background Blobs */}
-                    <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-cyan-100/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply"></div>
-                    <div className="fixed bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-blue-100/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply"></div>
-                    <div className="fixed top-[40%] right-[30%] w-[300px] h-[300px] bg-slate-100/50 rounded-full blur-[80px] pointer-events-none"></div>
-
-                    <div className="max-w-3xl mx-auto px-4 py-6 relative z-10">
-                        <div className="flex justify-between items-center mb-4 md:mb-6">
-                            <div className="hidden md:flex text-2xl font-extrabold text-slate-800 tracking-tight items-center gap-2">
-                                <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center text-white">
-                                    <Heart size={18} fill="white"/>
-                                </div>
-                                今天穿什麼
-                            </div>
-                            <div className="hidden md:block">
-                                <TabBarDesktop view={view} onViewChange={handleViewChange} />
-                            </div>
-                        </div>
-
-                        {view === 'home' && (
-                            <div className="animate-fade-in">
-                                {/* Weather Bar (Compact Card Style) */}
-                                <div className="mb-6 p-4 rounded-3xl bg-white shadow-sm border border-slate-100 flex items-center justify-between gap-4 relative overflow-hidden">
-                                    <div className="relative z-10 flex items-center gap-4 w-full">
-                                        {/* Icon Box */}
-                                        <div className="w-12 h-12 rounded-2xl bg-cyan-50 flex items-center justify-center text-cyan-600 shrink-0">
-                                            {weather.rainProb > 50 ? <CloudRain size={24}/> : <Sun size={24}/>}
-                                        </div>
-                                        
-                                        {/* Info */}
-                                        <div className="flex-1">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <button 
-                                                    onClick={() => setIsLocationModalOpen(true)}
-                                                    className="flex items-center gap-1 group rounded-lg hover:bg-slate-50 p-1 -ml-1 transition-colors"
-                                                >
-                                                    <h2 className="text-slate-800 font-bold text-lg tracking-tight">{weather.name}</h2>
-                                                    <ChevronDown size={16} className="text-slate-400 group-hover:text-slate-600"/>
-                                                </button>
-                                            </div>
-                                            
-                                            <div className="flex items-center gap-3 w-full">
-                                                {/* Temp Bar */}
-                                                <div className="flex items-center gap-2 flex-1">
-                                                    <span className="text-[10px] font-bold text-slate-400 w-5">{weather.minTemp}°</span>
-                                                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden relative">
-                                                        <div 
-                                                            className="absolute top-0 bottom-0 bg-gradient-to-r from-cyan-300 to-blue-400 rounded-full" 
-                                                            style={{left: `${tempRangeLeft}%`, right: `${tempRangeRight}%`}}
-                                                        ></div>
-                                                    </div>
-                                                    <span className="text-[10px] font-bold text-slate-600 w-5 text-right">{weather.maxTemp}°</span>
-                                                </div>
-                                                
-                                                {/* Rain Bar */}
-                                                <div className="flex items-center gap-1 w-12 justify-end">
-                                                    <Droplets size={10} className="text-cyan-500 fill-current"/>
-                                                    <span className="text-[10px] font-bold text-cyan-600">{weather.rainProb}%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <h1 className="text-2xl font-bold text-slate-800 mb-5 px-1 tracking-tight">今天穿什麼</h1>
-                                
-                                {outfits.length === 0 ? (
-                                    <EmptyState 
-                                        message="衣櫃空空如也" 
-                                        subMessage="快去新增你的第一套穿搭，讓 AI 幫你決定明天穿什麼吧！"
-                                        action={() => handleViewChange('create', true)}
-                                    />
-                                ) : (
-                                    <>
-                                        {/* Filter Bar */}
-                                        <div className="mb-6 space-y-3">
-                                            <div className="overflow-x-auto pb-2 scrollbar-hide">
-                                                <div className="flex gap-2 px-1">
-                                                    <button onClick={() => setHomeFilterColor(null)} className={`flex-shrink-0 px-5 py-2.5 rounded-full text-xs font-bold transition-all border ${!homeFilterColor ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200'}`}>全部</button>
-                                                    {COLORS.filter(c => availableColors.includes(c.id)).map(c => (
-                                                        <button key={c.id} onClick={() => setHomeFilterColor(homeFilterColor === c.id ? null : c.id)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full border transition-all ${homeFilterColor === c.id ? 'bg-white ring-2 ring-cyan-500 border-transparent shadow-md' : 'bg-white border-slate-200 shadow-sm hover:bg-slate-50'}`}>
-                                                                <div className="w-3 h-3 rounded-full border border-slate-100" style={{backgroundColor: c.hex}}></div>
-                                                                <span className={`text-xs ${homeFilterColor === c.id ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{c.label}</span>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Grid - Clean Image Only Cards - NO SELECTION INTERACTION */}
-                                        {homeRecommendations.length > 0 ? (
-                                            <div className="grid grid-cols-2 gap-4 mb-32 md:mb-24 px-1">
-                                            {homeRecommendations.map((outfit) => {
-                                                const isSelected = selectedOutfitId === outfit.id;
-                                                return (
-                                                <div key={outfit.id} onClick={() => handleSelectOutfit(outfit.id)} className={`relative group rounded-3xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 border bg-white ${isSelected ? 'border-cyan-400 ring-4 ring-cyan-50' : 'border-white'}`}>
-                                                    <div className="aspect-[3/4] bg-slate-100 relative">
-                                                        <img src={outfit.image} alt="Outfit" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                                                        
-                                                        {/* Rain Indicator Overlay */}
-                                                        {outfit.isNotRainFriendly && (
-                                                            <div className="absolute top-3 right-3">
-                                                                <span className="bg-white/90 backdrop-blur-md text-slate-400 text-[10px] w-8 h-8 flex items-center justify-center rounded-full shadow-sm" title="不宜雨天">
-                                                                    <Umbrella size={16} className="line-through"/>
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                )
-                                            })}
-                                            </div>
-                                        ) : (
-                                            <div className="text-center py-24 bg-white/50 rounded-3xl border border-slate-200 border-dashed mx-1">
-                                                <p className="text-slate-500 text-sm font-medium">沒有符合條件的穿搭</p>
-                                                {homeFilterColor && <p className="text-xs text-slate-400 mt-2">試著取消顏色篩選？</p>}
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        )}
-
-                        {view === 'create' && (
-                            <div className="animate-fade-in max-w-lg mx-auto bg-white shadow-xl shadow-slate-200/50 border border-slate-100 p-6 md:p-8 rounded-[2.5rem]">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                        {newOutfit.id ? '編輯穿搭' : '新增穿搭'}
-                                        {isAnalyzing && <span className="text-xs font-normal text-cyan-600 bg-cyan-50 px-2 py-1 rounded-full animate-pulse flex items-center gap-1"><Loader2 size={12} className="animate-spin"/> AI</span>}
-                                    </h2>
-                                    <div className="flex gap-2">
-                                        <button onClick={handleCancelCreate} className="text-xs font-bold text-slate-400 hover:text-slate-600 bg-slate-50 px-4 py-2 rounded-full transition-colors">
-                                            取消
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <div className="space-y-6">
-                                    {/* 1. Image Upload & AI Button Container */}
-                                    <div className="flex flex-col gap-4">
-                                        {/* Square Image Box */}
-                                        <div className="w-full aspect-square bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center relative overflow-hidden group hover:border-cyan-300 transition-colors">
-                                            {newOutfit.image ? (
-                                                <img src={newOutfit.image} className="w-full h-full object-cover" alt="Preview"/>
-                                            ) : (
-                                                <div className="text-center p-6 text-slate-400">
-                                                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-slate-300 group-hover:text-cyan-400 group-hover:scale-110 transition-all">
-                                                        <Camera size={32}/>
-                                                    </div>
-                                                    <p className="text-xs font-bold tracking-wide">點擊上傳照片</p>
-                                                </div>
-                                            )}
-                                            <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                                            {newOutfit.image && (
-                                                <button onClick={(e) => {e.stopPropagation(); updateNewOutfit({image: ''})}} className="absolute top-4 right-4 bg-white/90 p-2.5 rounded-full shadow-md text-slate-400 hover:text-red-500 hover:bg-white transition-all"><Trash2 size={18}/></button>
-                                            )}
-                                        </div>
-                                        
-                                        {/* AI Button Below Image */}
-                                        <button 
-                                            onClick={handleAIAnalyze} 
-                                            disabled={!newOutfit.image || isAnalyzing} 
-                                            className={`w-full py-4 rounded-2xl text-sm font-bold transition-all flex items-center justify-center gap-2 
-                                                ${!newOutfit.image 
-                                                    ? 'bg-slate-100 text-slate-300 cursor-not-allowed' 
-                                                    : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-200/50 active:scale-95'
-                                                }`}
-                                        >
-                                            {isAnalyzing ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18}/>} 
-                                            <span>AI 自動辨識</span>
-                                        </button>
-                                    </div>
-                                    
-                                    {/* 2. Compact Selectors */}
-                                    <div className="space-y-6">
-                                        <div>
-                                            <label className="text-xs font-extrabold text-slate-400 mb-3 block uppercase tracking-wider pl-1">適合季節</label>
-                                            <div className="flex gap-2">
-                                                {SEASONS.map(s => {
-                                                    const isSelected = newOutfit.seasons && newOutfit.seasons.includes(s.id);
-                                                    const Icon = s.icon;
-                                                    return (
-                                                        <button key={s.id} onClick={() => toggleSeason(s.id)} className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-bold border-2 transition-all ${isSelected ? `${s.color} border-current/20 shadow-sm` : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}>
-                                                            <Icon size={18} /> {s.label}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-extrabold text-slate-400 mb-3 block uppercase tracking-wider pl-1">主要色系</label>
-                                            <div className="flex flex-wrap gap-2.5">
-                                                {COLORS.map(c => {
-                                                    const isSelected = newOutfit.colors && newOutfit.colors.includes(c.id);
-                                                    return (
-                                                        <button key={c.id} onClick={() => toggleColor(c.id)} className={`w-9 h-9 rounded-full border-2 transition-all flex items-center justify-center ${isSelected ? 'scale-110 ring-2 ring-cyan-400 border-white shadow-md' : 'border-transparent opacity-80 hover:opacity-100 hover:scale-105'}`} style={{backgroundColor: c.hex}} title={c.label}>
-                                                            {isSelected && <Check size={14} className={c.id === 'white' ? 'text-black' : 'text-white'} strokeWidth={3} />}
-                                                        </button>
-                                                    )
-                                                })}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* 3. Rain Toggle */}
-                                    <button 
-                                        onClick={() => updateNewOutfit({ isNotRainFriendly: !newOutfit.isNotRainFriendly })}
-                                        className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${newOutfit.isNotRainFriendly ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <div className={`p-3 rounded-full ${newOutfit.isNotRainFriendly ? 'bg-red-200 text-red-600' : 'bg-slate-100 text-slate-400'}`}>
-                                                <CloudRain size={20}/>
-                                            </div>
-                                            <div className="text-left">
-                                                <span className={`text-sm font-bold block ${newOutfit.isNotRainFriendly ? 'text-red-700' : 'text-slate-600'}`}>下雨天不穿</span>
-                                                <span className="text-[10px] text-slate-400 font-medium">若材質怕水或易髒請勾選</span>
-                                            </div>
-                                        </div>
-                                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${newOutfit.isNotRainFriendly ? 'bg-red-500 border-red-500' : 'border-slate-300 bg-white'}`}>
-                                            {newOutfit.isNotRainFriendly && <Check size={14} className="text-white"/>}
-                                        </div>
-                                    </button>
-
-                                    {/* Action Buttons */}
-                                    <div className="flex gap-3 pt-4">
-                                        <button onClick={handleCancelCreate} className="flex-1 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all text-sm flex items-center justify-center gap-2">
-                                            取消
-                                        </button>
-                                        <button onClick={handleSave} className="flex-[2] bg-slate-900 hover:bg-black text-white font-bold py-4 rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95 text-sm flex items-center justify-center gap-2">
-                                            <Check size={18}/> {newOutfit.id ? '儲存修改' : '完成建立'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {view === 'manage' && (
-                            <div className="animate-fade-in">
-                                <div className="flex justify-between items-end mb-6 px-1">
-                                    <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">全部穿搭</h2>
-                                    <div className="flex items-center gap-2">
-                                        <button onClick={() => setShowFilters(!showFilters)} className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${showFilters || activeFilterCount > 0 ? 'bg-cyan-500 text-white shadow-md shadow-cyan-200' : 'bg-white text-slate-400 shadow-sm border border-slate-100'}`}>
-                                            <Filter size={18}/>
-                                        </button>
-                                        <span className="text-slate-500 text-xs font-bold bg-white px-3 py-2.5 rounded-full shadow-sm border border-slate-100">{manageList.length} 件</span>
-                                    </div>
-                                </div>
-
-                                {/* Filters */}
-                                {showFilters && (
-                                    <div className="mb-6 p-4 bg-white/80 backdrop-blur-md rounded-[2rem] border border-white shadow-sm animate-fade-in space-y-4 mx-1">
-                                        <div>
-                                            <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">季節</span>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => setManageFilterSeason(null)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${!manageFilterSeason ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-100'}`}>全部</button>
-                                                {SEASONS.map(s => (
-                                                    <button key={s.id} onClick={() => setManageFilterSeason(manageFilterSeason === s.id ? null : s.id)} className={`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors ${manageFilterSeason === s.id ? s.color : 'bg-white text-slate-400 border-slate-100'}`}>
-                                                        {s.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">顏色</span>
-                                            <div className="flex flex-wrap gap-2">
-                                                <button onClick={() => setManageFilterColor(null)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${!manageFilterColor ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>全部</button>
-                                                {COLORS.map(c => (
-                                                    <button key={c.id} onClick={() => setManageFilterColor(manageFilterColor === c.id ? null : c.id)} className={`w-8 h-8 rounded-full border flex items-center justify-center transition-transform ${manageFilterColor === c.id ? 'ring-2 ring-cyan-400 scale-110' : 'opacity-80'}`} style={{backgroundColor: c.hex}}>
-                                                        {manageFilterColor === c.id && <Check size={12} className={c.id === 'white' ? 'text-black' : 'text-white'}/>}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">特殊條件</span>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => setManageFilterRainFriendly(!manageFilterRainFriendly)} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${manageFilterRainFriendly ? 'bg-blue-100 text-blue-600 border-blue-200' : 'bg-white text-slate-400 border-slate-100'}`}>
-                                                    <Umbrella size={14}/> 雨天OK
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {outfits.length === 0 ? (
-                                    <EmptyState 
-                                        message="還沒有任何衣物" 
-                                        subMessage="開始整理你的衣櫃，讓生活更有條理！"
-                                        action={() => handleViewChange('create', true)}
-                                    />
-                                ) : (
-                                    <div className="flex flex-col gap-4 pb-20">
-                                        {manageList.length > 0 ? manageList.map(outfit => (
-                                            <div key={outfit.id} className="flex bg-white rounded-[1.5rem] p-3 pr-4 border border-white shadow-sm items-start gap-4 hover:shadow-md transition-shadow">
-                                                <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gray-50 flex-shrink-0">
-                                                    <img src={outfit.image} className="w-full h-full object-cover" alt="Outfit"/>
-                                                </div>
-                                                <div className="flex-1 min-w-0 flex flex-col gap-2 py-1">
-                                                    <div className="flex items-start justify-between">
-                                                        <div className="flex flex-wrap gap-1.5">
-                                                            {outfit.seasons.map(sid => <SeasonBadge key={sid} seasonId={sid} minimal />)}
-                                                            {outfit.isNotRainFriendly && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold bg-red-50 text-red-500 border border-red-100"><Umbrella size={10} className="line-through"/> 怕水</span>}
-                                                        </div>
-                                                        <div className="flex gap-1 -mr-1">
-                                                            <button onClick={(e) => handleEdit(outfit, e)} className="p-2 rounded-full text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"><Pencil size={16}/></button>
-                                                            <button onClick={() => setDeleteId(outfit.id)} className="p-2 rounded-full text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={16}/></button>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Highlight Text in Manage View (Full Sentence) */}
-                                                    <p className="text-xs text-slate-600 leading-relaxed font-medium bg-slate-50 p-2.5 rounded-xl">
-                                                        {outfit.highlight ? (
-                                                            <>
-                                                                <span className="mr-1 text-base">💡</span>{outfit.highlight}
-                                                            </>
-                                                        ) : (
-                                                            <span className="text-slate-400 italic">暫無亮點描述</span>
-                                                        )}
-                                                    </p>
-
-                                                    <div className="flex gap-1.5 mt-auto pt-1">
-                                                        {outfit.colors.map(cid => { const c = COLORS.find(x => x.id === cid); return c ? <div key={cid} className="w-2.5 h-2.5 rounded-full border border-slate-200" style={{backgroundColor: c.hex}}></div> : null; })}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )) : (
-                                            <div className="text-center py-16 bg-white/50 rounded-[2rem] border-2 border-white border-dashed">
-                                                <div className="text-4xl mb-2">🧐</div>
-                                                <div className="text-slate-500 font-bold">找不到符合條件的衣物</div>
-                                                <div className="text-xs text-slate-400 mt-1">試著放寬篩選條件看看？</div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Custom Delete Modal */}
-                                {deleteId && (
-                                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-fade-in">
-                                        <div className="bg-white rounded-[2rem] p-6 shadow-2xl max-w-xs w-full border border-white/50">
-                                            <div className="flex flex-col items-center gap-4 text-center">
-                                                <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center text-red-500 mb-1">
-                                                    <AlertCircle size={28}/>
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-xl font-bold text-slate-800">確定要刪除嗎？</h3>
-                                                    <p className="text-sm text-slate-500 mt-2 leading-relaxed">這件穿搭將會從你的衣櫃中永久消失，無法復原喔！</p>
-                                                </div>
-                                                <div className="flex gap-3 w-full mt-4">
-                                                    <button onClick={() => setDeleteId(null)} className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm">取消</button>
-                                                    <button onClick={confirmDelete} className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-200 text-sm">刪除</button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Location Modal */}
-                        {isLocationModalOpen && (
-                            <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
-                                <div className="bg-white rounded-t-[2rem] md:rounded-[2rem] w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden shadow-2xl">
-                                    <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
-                                        <h3 className="font-bold text-slate-800 text-lg">選擇地區</h3>
-                                        <button onClick={() => setIsLocationModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
-                                    </div>
-                                    <div className="overflow-y-auto p-4 space-y-2 pb-8 scrollbar-hide">
-                                        {LOCATIONS.map((loc, index) => (
-                                            <button 
-                                                key={index}
-                                                onClick={() => { setLocationIndex(index); setIsLocationModalOpen(false); }}
-                                                className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${locationIndex === index ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-                                            >
-                                                <div className="flex flex-col items-start">
-                                                    <span className={`font-bold text-base ${locationIndex === index ? 'text-white' : 'text-slate-800'}`}>{loc.name}</span>
-                                                    <span className={`text-xs ${locationIndex === index ? 'text-slate-300' : 'text-slate-400'}`}>{loc.country}</span>
-                                                </div>
-                                                {locationIndex === index && <div className="bg-white/20 p-1 rounded-full"><Check size={16} className="text-white"/></div>}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <TabBarMobile view={view} onViewChange={handleViewChange} />
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+{\rtf1\ansi\ansicpg950\cocoartf2761
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 <!DOCTYPE html>\
+<html lang="zh-TW">\
+<head>\
+    <meta charset="UTF-8">\
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">\
+    <title>\uc0\u20170 \u22825 \u31359 \u20160 \u40636  (OOTD)</title>\
+    \
+    <!-- React & ReactDOM -->\
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>\
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>\
+    \
+    <!-- Babel for JSX -->\
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>\
+    \
+    <!-- Tailwind CSS -->\
+    <script src="https://cdn.tailwindcss.com"></script>\
+    \
+    <!-- Lucide Icons (Vanilla) -->\
+    <script src="https://unpkg.com/lucide@latest"></script>\
+\
+    <!-- Google Fonts -->\
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">\
+\
+    <!-- Tailwind Config for Custom Animations -->\
+    <script>\
+        tailwind.config = \{\
+            theme: \{\
+                extend: \{\
+                    fontFamily: \{\
+                        sans: ['"Noto Sans TC"', 'sans-serif'],\
+                    \},\
+                    // \uc0\u24375 \u21046 \u35206 \u33995 \u23383 \u39636 \u22823 \u23567 \u35373 \u23450 \
+                    fontSize: \{\
+                        'xs': '0.875rem',    // 14px (\uc0\u21407 \u28858  12px) - \u26368 \u23567 \u23383 \u34399 \
+                        'sm': '0.9375rem',   // 15px (\uc0\u21407 \u28858  14px) -\u31245 \u24494 \u21152 \u22823 \u20197 \u32173 \u25345 \u23652 \u32026 \
+                        'base': '1rem',      // 16px\
+                        'lg': '1.125rem',    // 18px\
+                        'xl': '1.25rem',     // 20px\
+                        '2xl': '1.5rem',     // 24px\
+                    \},\
+                    animation: \{\
+                        'fade-in': 'fadeIn 0.4s ease-out forwards',\
+                    \},\
+                    keyframes: \{\
+                        fadeIn: \{\
+                            '0%': \{ opacity: '0', transform: 'translateY(10px)' \},\
+                            '100%': \{ opacity: '1', transform: 'translateY(0)' \},\
+                        \}\
+                    \}\
+                \}\
+            \}\
+        \}\
+    </script>\
+\
+    <style>\
+        /* Custom Scrollbar Hide Utility */\
+        .scrollbar-hide::-webkit-scrollbar \{\
+            display: none;\
+        \}\
+        .scrollbar-hide \{\
+            -ms-overflow-style: none;\
+            scrollbar-width: none;\
+        \}\
+        /* \uc0\u20840 \u22495 \u26368 \u23567 \u23383 \u34399 \u20445 \u35703  */\
+        html, body \{\
+            font-size: 16px;\
+            min-width: 320px;\
+        \}\
+        /* \uc0\u30906 \u20445 \u25152 \u26377 \u20803 \u32032 \u38928 \u35373 \u19981 \u23567 \u26044  14px */\
+        * \{\
+            font-size: inherit; \
+        \}\
+        .text-xs, .text-sm, .text-base, .text-lg, .text-xl, .text-2xl \{\
+             /* \uc0\u35731  Tailwind class \u29983 \u25928 \u65292 \u19981 \u34987  inherit \u33995 \u36942  */\
+             font-size: revert-layer;\
+        \}\
+    </style>\
+</head>\
+<body class="bg-[#F8FAFC]">\
+    <div id="root"></div>\
+\
+    <script type="text/babel">\
+        const \{ useState, useEffect, useMemo \} = React;\
+\
+        // --- Icon Shim for Lucide in Browser ---\
+        const createLucideIcon = (iconName) => \{\
+            return (\{ size = 24, className, ...props \}) => \{\
+                const iconData = lucide.icons[iconName];\
+                if (!iconData) return null;\
+                return (\
+                    <svg\
+                        xmlns="http://www.w3.org/2000/svg"\
+                        width=\{size\}\
+                        height=\{size\}\
+                        viewBox="0 0 24 24"\
+                        fill="none"\
+                        stroke="currentColor"\
+                        strokeWidth="2"\
+                        strokeLinecap="round"\
+                        strokeLinejoin="round"\
+                        className=\{className\}\
+                        \{...props\}\
+                    >\
+                        \{iconData.map((child, index) => \{\
+                            const [tag, attrs] = child;\
+                            return React.createElement(tag, \{ key: index, ...attrs \});\
+                        \})\}\
+                    </svg>\
+                );\
+            \};\
+        \};\
+\
+        // Initialize Icons used in the app\
+        const Shirt = createLucideIcon('Shirt');\
+        const Plus = createLucideIcon('Plus');\
+        const LayoutGrid = createLucideIcon('LayoutGrid');\
+        const CloudRain = createLucideIcon('CloudRain');\
+        const Sun = createLucideIcon('Sun');\
+        const Trash2 = createLucideIcon('Trash2');\
+        const Check = createLucideIcon('Check');\
+        const X = createLucideIcon('X');\
+        const Calendar = createLucideIcon('Calendar');\
+        const Thermometer = createLucideIcon('Thermometer');\
+        const Umbrella = createLucideIcon('Umbrella');\
+        const Heart = createLucideIcon('Heart');\
+        const Sparkles = createLucideIcon('Sparkles');\
+        const Loader2 = createLucideIcon('Loader2');\
+        const Snowflake = createLucideIcon('Snowflake');\
+        const Wind = createLucideIcon('Wind');\
+        const SunMedium = createLucideIcon('SunMedium');\
+        const Droplets = createLucideIcon('Droplets');\
+        const MapPin = createLucideIcon('MapPin');\
+        const Pencil = createLucideIcon('Pencil');\
+        const Clock = createLucideIcon('Clock');\
+        const Filter = createLucideIcon('Filter');\
+        const AlertCircle = createLucideIcon('AlertCircle');\
+        const Camera = createLucideIcon('Camera');\
+        const ChevronLeft = createLucideIcon('ChevronLeft');\
+        const ThumbsUp = createLucideIcon('ThumbsUp');\
+        const Star = createLucideIcon('Star');\
+        const Globe = createLucideIcon('Globe');\
+        const ChevronDown = createLucideIcon('ChevronDown');\
+\
+\
+        // --- Gemini API Configuration ---\
+        const apiKey = ""; // API Key \uc0\u26371 \u22312 \u22519 \u34892 \u29872 \u22659 \u20013 \u34987 \u27880 \u20837 \u65292 \u25110 \u32773 \u30001 \u20351 \u29992 \u32773 \u36664 \u20837 \
+\
+        // Helper to get API Key (Env -> LocalStorage -> Prompt)\
+        const getEffectiveApiKey = () => \{\
+            if (apiKey && apiKey.length > 0) return apiKey;\
+            \
+            const stored = localStorage.getItem('gemini_api_key');\
+            if (stored) return stored;\
+\
+            const input = prompt("\uc0\u35531 \u36664 \u20837 \u24744 \u30340  Google Gemini API Key \u20197 \u20351 \u29992  AI \u21151 \u33021 \u65306 \\n(\u23427 \u23559 \u26371 \u34987 \u26283 \u23384 \u22312 \u24744 \u30340 \u28687 \u35261 \u22120 \u20013 )");\
+            if (input) \{\
+                localStorage.setItem('gemini_api_key', input);\
+                return input;\
+            \}\
+            return null;\
+        \};\
+\
+        // --- Constants & Helpers ---\
+        // \uc0\u25844 \u20805 \u21488 \u28771 \u25152 \u26377 \u32291 \u24066 \
+        const LOCATIONS = [\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u21488 \u21271 \u24066 ", minTemp: 22, maxTemp: 26, rainProb: 60 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u26032 \u21271 \u24066 ", minTemp: 21, maxTemp: 25, rainProb: 55 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u22522 \u38534 \u24066 ", minTemp: 20, maxTemp: 24, rainProb: 80 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u26691 \u22290 \u24066 ", minTemp: 21, maxTemp: 27, rainProb: 40 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u26032 \u31481 \u24066 ", minTemp: 21, maxTemp: 26, rainProb: 30 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u26032 \u31481 \u32291 ", minTemp: 20, maxTemp: 26, rainProb: 30 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u33495 \u26647 \u32291 ", minTemp: 21, maxTemp: 27, rainProb: 25 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u21488 \u20013 \u24066 ", minTemp: 24, maxTemp: 30, rainProb: 10 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u24432 \u21270 \u32291 ", minTemp: 24, maxTemp: 30, rainProb: 15 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u21335 \u25237 \u32291 ", minTemp: 22, maxTemp: 29, rainProb: 20 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u38642 \u26519 \u32291 ", minTemp: 24, maxTemp: 31, rainProb: 10 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u22025 \u32681 \u24066 ", minTemp: 24, maxTemp: 31, rainProb: 10 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u22025 \u32681 \u32291 ", minTemp: 24, maxTemp: 31, rainProb: 10 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u21488 \u21335 \u24066 ", minTemp: 25, maxTemp: 32, rainProb: 5 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u39640 \u38596 \u24066 ", minTemp: 26, maxTemp: 32, rainProb: 5 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u23631 \u26481 \u32291 ", minTemp: 26, maxTemp: 33, rainProb: 10 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u23452 \u34349 \u32291 ", minTemp: 21, maxTemp: 25, rainProb: 70 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u33457 \u34030 \u32291 ", minTemp: 23, maxTemp: 28, rainProb: 40 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u21488 \u26481 \u32291 ", minTemp: 24, maxTemp: 29, rainProb: 30 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u28558 \u28246 \u32291 ", minTemp: 24, maxTemp: 28, rainProb: 10 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u37329 \u38272 \u32291 ", minTemp: 22, maxTemp: 27, rainProb: 10 \},\
+            \{ country: "\uc0\u21488 \u28771 ", name: "\u36899 \u27743 \u32291 ", minTemp: 19, maxTemp: 23, rainProb: 20 \},\
+            \{ country: "\uc0\u26085 \u26412 ", name: "\u26481 \u20140 ", minTemp: 15, maxTemp: 20, rainProb: 30 \},\
+            \{ country: "\uc0\u38867 \u22283 ", name: "\u39318 \u29246 ", minTemp: 10, maxTemp: 18, rainProb: 0 \},\
+        ];\
+\
+        const SEASONS = [\
+            \{ id: 'summer', label: '\uc0\u22799 ', desc: '> 25\'b0C', icon: SunMedium, color: 'bg-orange-50 text-orange-500 border-orange-100' \},\
+            \{ id: 'spring_autumn', label: '\uc0\u26149 /\u31179 ', desc: '20-25\'b0C', icon: Wind, color: 'bg-emerald-50 text-emerald-600 border-emerald-100' \},\
+            \{ id: 'winter', label: '\uc0\u20908 ', desc: '< 20\'b0C', icon: Snowflake, color: 'bg-sky-50 text-sky-600 border-sky-100' \},\
+        ];\
+\
+        const SEASON_CONFIG = \{\
+            summer: \{ months: [5, 6, 7, 8], minTemp: 26 \},\
+            spring_autumn: \{ months: [3, 4, 9, 10], minTemp: 20, maxTemp: 25 \},\
+            winter: \{ months: [11, 0, 1, 2], maxTemp: 19 \}\
+        \};\
+\
+        const COLORS = [\
+            \{ id: 'red', hex: "#F87171", label: "\uc0\u32005 " \},\
+            \{ id: 'orange', hex: "#FB923C", label: "\uc0\u27225 " \},\
+            \{ id: 'yellow', hex: "#FACC15", label: "\uc0\u40643 " \},\
+            \{ id: 'green', hex: "#4ADE80", label: "\uc0\u32160 " \},\
+            \{ id: 'blue', hex: "#60A5FA", label: "\uc0\u34253 " \},\
+            \{ id: 'purple', hex: "#C084FC", label: "\uc0\u32043 " \},\
+            \{ id: 'pink', hex: "#F472B6", label: "\uc0\u31881 " \},\
+            \{ id: 'brown', hex: "#A16207", label: "\uc0\u26837 " \},\
+            \{ id: 'white', hex: "#ffffff", label: "\uc0\u30333 " \},\
+            \{ id: 'gray', hex: "#94A3B8", label: "\uc0\u28784 " \},\
+            \{ id: 'black', hex: "#1E293B", label: "\uc0\u40657 " \},\
+        ];\
+\
+        const INITIAL_OUTFITS = [\
+            \{\
+                id: 1,\
+                image: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500&q=80",\
+                seasons: ['winter', 'spring_autumn'],\
+                isNotRainFriendly: true, \
+                colors: ['pink', 'white'], \
+                lastWorn: new Date().toISOString(),\
+                highlight: "\uc0\u28331 \u26580 \u31881 \u33394 \u37341 \u32340 \u34923 \u25645 \u31777 \u32004 \u19979 \u36523 \u65292 \u23637 \u29694 \u29980 \u32654 \u27683 \u36074 \u65292 \u32004 \u26371 \u39318 \u36984 \u65281 \u55357 \u56469 "\
+            \},\
+            \{\
+                id: 2,\
+                image: "https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?w=500&q=80",\
+                seasons: ['spring_autumn', 'summer'],\
+                isNotRainFriendly: false,\
+                colors: ['white', 'gray'],\
+                lastWorn: new Date().toISOString(),\
+                highlight: "\uc0\u28165 \u29245 \u20432 \u33853 \u30340 \u28154 \u33394 \u22871 \u35037 \u65292 \u19978 \u29677 \u20241 \u38290 \u20841 \u30456 \u23452 \u65292 \u23637 \u29694 \u30693 \u24615 \u32654 \u24863 \u10024 "\
+            \}\
+        ];\
+\
+        // Helper to strip markdown code blocks from JSON string\
+        const cleanJsonString = (str) => \{\
+            if (!str) return "\{\}";\
+            return str.replace(/```json/g, '').replace(/```/g, '').trim();\
+        \};\
+\
+        // --- Sub-components ---\
+\
+        const SeasonBadge = (\{ seasonId, minimal = false \}) => \{\
+            const s = SEASONS.find(x => x.id === seasonId);\
+            const Icon = s ? s.icon : null;\
+            // \uc0\u26367 \u25563 \u25152 \u26377  text-[10px] \u28858  text-xs (14px)\
+            return s ? <span className=\{`inline-flex items-center gap-1 rounded-full font-medium $\{s.color\} $\{minimal ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-xs'\}`\}>\{!minimal && <Icon size=\{14\}/>\}\{s.label\}</span> : null;\
+        \};\
+\
+        const EmptyState = (\{ message, subMessage, action \}) => (\
+            <div className="flex flex-col items-center justify-center py-20 px-8 text-center animate-fade-in bg-white rounded-3xl border border-slate-100 mx-4 mt-8 shadow-sm">\
+                <div className="w-24 h-24 bg-cyan-50 rounded-full flex items-center justify-center mb-6 text-cyan-500">\
+                    <Shirt size=\{48\} strokeWidth=\{1.5\} />\
+                </div>\
+                <h3 className="text-xl font-bold text-slate-800 mb-3">\{message\}</h3>\
+                <p className="text-slate-500 text-sm mb-8 max-w-xs leading-relaxed">\{subMessage\}</p>\
+                <button onClick=\{action\} className="bg-cyan-500 hover:bg-cyan-600 text-white px-8 py-3.5 rounded-full font-bold shadow-lg shadow-cyan-200 transition-all flex items-center gap-2 text-sm">\
+                    <Plus size=\{20\} /> \uc0\u26032 \u22686 \u31532 \u19968 \u22871 \
+                </button>\
+            </div>\
+        );\
+\
+        const TabBarDesktop = (\{ view, onViewChange \}) => (\
+            <div className="flex gap-4">\
+                <button onClick=\{() => onViewChange('home')\} className=\{`flex items-center gap-2 px-6 py-2.5 rounded-full transition-all text-sm font-bold $\{view === 'home' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400 hover:bg-white hover:text-slate-600'\}`\}>\
+                    <LayoutGrid size=\{18\} /> \uc0\u20170 \u26085 \u31359 \u25645 \
+                </button>\
+                <button onClick=\{() => onViewChange('create', true)\} className=\{`flex items-center gap-2 px-6 py-2.5 rounded-full transition-all text-sm font-bold $\{view === 'create' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400 hover:bg-white hover:text-slate-600'\}`\}>\
+                    <Plus size=\{18\} /> \uc0\u26032 \u22686 \
+                </button>\
+                <button onClick=\{() => onViewChange('manage')\} className=\{`flex items-center gap-2 px-6 py-2.5 rounded-full transition-all text-sm font-bold $\{view === 'manage' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400 hover:bg-white hover:text-slate-600'\}`\}>\
+                    <Shirt size=\{18\} /> \uc0\u20840 \u37096 \u31359 \u25645 \
+                </button>\
+            </div>\
+        );\
+\
+        const TabBarMobile = (\{ view, onViewChange \}) => (\
+            <div className="fixed bottom-0 left-0 right-0 h-[84px] bg-white/95 backdrop-blur-md border-t border-slate-100 z-50 grid grid-cols-3 items-start pt-3 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] md:hidden">\
+                <button onClick=\{() => onViewChange('home')\} className=\{`flex flex-col items-center justify-center gap-1 transition-all $\{view === 'home' ? 'text-cyan-600' : 'text-slate-400 hover:text-slate-600'\}`\}>\
+                    <LayoutGrid size=\{24\} strokeWidth=\{view === 'home' ? 2.5 : 2\} />\
+                    <span className="text-xs font-medium tracking-wide">\uc0\u20170 \u26085 \u31359 \u25645 </span>\
+                </button>\
+                \
+                <div className="flex justify-center -mt-8">\
+                    <button onClick=\{() => onViewChange('create', true)\} className=\{`w-16 h-16 rounded-full flex items-center justify-center shadow-xl transition-all transform active:scale-95 $\{view === 'create' ? 'bg-cyan-600 text-white' : 'bg-cyan-500 text-white hover:bg-cyan-600'\}`\}>\
+                        <Plus size=\{32\} strokeWidth=\{3\} />\
+                    </button>\
+                </div>\
+\
+                <button onClick=\{() => onViewChange('manage')\} className=\{`flex flex-col items-center justify-center gap-1 transition-all $\{view === 'manage' ? 'text-cyan-600' : 'text-slate-400 hover:text-slate-600'\}`\}>\
+                    <Shirt size=\{24\} strokeWidth=\{view === 'manage' ? 2.5 : 2\} />\
+                    <span className="text-xs font-medium tracking-wide">\uc0\u20840 \u37096 \u31359 \u25645 </span>\
+                </button>\
+            </div>\
+        );\
+\
+        // --- Main App Component ---\
+        function App() \{\
+            const [view, setView] = useState('home'); \
+            const [lastView, setLastView] = useState('home'); \
+            const [outfits, setOutfits] = useState(INITIAL_OUTFITS);\
+            \
+            // Weather State\
+            const [locationIndex, setLocationIndex] = useState(0);\
+            const weather = LOCATIONS[locationIndex];\
+            const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);\
+            \
+            const [selectedOutfitId, setSelectedOutfitId] = useState(null);\
+            const [viewState, setViewState] = useState('browsing'); \
+            \
+            // Filter States\
+            const [homeFilterColor, setHomeFilterColor] = useState(null);\
+            \
+            const [showFilters, setShowFilters] = useState(false);\
+            const [manageFilterColor, setManageFilterColor] = useState(null);\
+            const [manageFilterSeason, setManageFilterSeason] = useState(null);\
+            const [manageFilterRainFriendly, setManageFilterRainFriendly] = useState(false);\
+\
+            // Delete Modal State\
+            const [deleteId, setDeleteId] = useState(null);\
+\
+            // AI States\
+            const [isAnalyzing, setIsAnalyzing] = useState(false);\
+            const [aiFeedback, setAiFeedback] = useState(null); \
+            const [isGeneratingComment, setIsGeneratingComment] = useState(false);\
+            \
+            // Form State\
+            const [newOutfit, setNewOutfit] = useState(\{\
+                id: null, \
+                image: "",\
+                seasons: [], \
+                isNotRainFriendly: false, \
+                colors: [],\
+                highlight: ""\
+            \});\
+            const [isFormDirty, setIsFormDirty] = useState(false);\
+\
+            // --- CORE FUNCTIONS ---\
+\
+            const toggleSeason = (seasonId) => \{\
+                setNewOutfit(prev => \{\
+                const exists = prev.seasons && prev.seasons.includes(seasonId);\
+                if (exists) return \{ ...prev, seasons: prev.seasons.filter(s => s !== seasonId) \};\
+                else return \{ ...prev, seasons: [...(prev.seasons || []), seasonId] \};\
+                \});\
+                setIsFormDirty(true);\
+            \};\
+\
+            const toggleColor = (colorId) => \{\
+                setNewOutfit(prev => \{\
+                    const exists = prev.colors && prev.colors.includes(colorId);\
+                    if (exists) return \{ ...prev, colors: prev.colors.filter(c => c !== colorId) \};\
+                    else return \{ ...prev, colors: [...(prev.colors || []), colorId] \};\
+                \});\
+                setIsFormDirty(true);\
+            \};\
+\
+            const updateNewOutfit = (updates) => \{\
+                setNewOutfit(prev => (\{ ...prev, ...updates \}));\
+                setIsFormDirty(true);\
+            \};\
+\
+            // Load from local storage\
+            useEffect(() => \{\
+                const saved = localStorage.getItem('ootd_outfits');\
+                if (saved) \{\
+                    try \{\
+                        setOutfits(JSON.parse(saved));\
+                    \} catch (e) \{\
+                        console.error("Failed to parse saved outfits", e);\
+                    \}\
+                \}\
+            \}, []);\
+\
+            // Save to local storage\
+            useEffect(() => \{\
+                localStorage.setItem('ootd_outfits', JSON.stringify(outfits));\
+            \}, [outfits]);\
+\
+            // Smart Default for Create Mode\
+            useEffect(() => \{\
+                if (view === 'create' && (!newOutfit.seasons || newOutfit.seasons.length === 0) && !newOutfit.id) \{\
+                    const currentMonth = new Date().getMonth(); \
+                    let suggestedSeason = '';\
+                    if (SEASON_CONFIG.summer.months.includes(currentMonth)) suggestedSeason = 'summer';\
+                    else if (SEASON_CONFIG.spring_autumn.months.includes(currentMonth)) suggestedSeason = 'spring_autumn';\
+                    else suggestedSeason = 'winter';\
+                    if (suggestedSeason) \{\
+                        setNewOutfit(prev => (\{ ...prev, seasons: [suggestedSeason] \}));\
+                    \}\
+                \}\
+            \}, [view, newOutfit.id]);\
+\
+            // Navigation Guard\
+            const handleViewChange = (targetView, resetForm = false) => \{\
+                if (view !== 'create') \{\
+                    setLastView(view); \
+                \}\
+\
+                if (resetForm) \{\
+                    setNewOutfit(\{ id: null, image: "", seasons: [], isNotRainFriendly: false, colors: [], highlight: "" \});\
+                    setIsFormDirty(false);\
+                \}\
+                \
+                setView(targetView);\
+                setIsFormDirty(false);\
+            \};\
+\
+            const handleCancelCreate = () => \{\
+                setIsFormDirty(false);\
+                setView(lastView); \
+            \};\
+\
+            // --- Recommendations Logic ---\
+            const \{ homeRecommendations, availableColors \} = useMemo(() => \{\
+                const avgTemp = (weather.minTemp + weather.maxTemp) / 2;\
+                const currentMonth = new Date().getMonth();\
+                const targetSeasons = new Set();\
+                \
+                if (avgTemp > 25) targetSeasons.add('summer');\
+                else if (avgTemp >= 20) targetSeasons.add('spring_autumn');\
+                else targetSeasons.add('winter');\
+\
+                if (SEASON_CONFIG.summer.months.includes(currentMonth)) targetSeasons.add('summer');\
+                else if (SEASON_CONFIG.spring_autumn.months.includes(currentMonth)) targetSeasons.add('spring_autumn');\
+                else targetSeasons.add('winter');\
+\
+                let base = outfits.filter(o => \{\
+                    const seasonMatch = o.seasons && o.seasons.some(s => targetSeasons.has(s));\
+                    let rainMatch = true;\
+                    // Auto rain filter logic (smart recommendation)\
+                    if (weather.rainProb > 50) \{\
+                        rainMatch = !o.isNotRainFriendly;\
+                    \}\
+                    return seasonMatch && rainMatch;\
+                \});\
+\
+                if (base.length === 0 && weather.rainProb > 50) \{\
+                    // Relax rain rule if nothing found\
+                    base = outfits.filter(o => o.seasons && o.seasons.some(s => targetSeasons.has(s)));\
+                \}\
+                if (base.length === 0 && outfits.length > 0) \{\
+                    base = [...outfits];\
+                \}\
+\
+                const colorsInBase = new Set();\
+                base.forEach(o => o.colors?.forEach(c => colorsInBase.add(c)));\
+\
+                let final = base;\
+                if (homeFilterColor) \{\
+                    final = base.filter(o => o.colors && o.colors.includes(homeFilterColor));\
+                \}\
+\
+                // Sort by most recently added\
+                final.sort((a, b) => b.id - a.id);\
+                \
+                return \{ homeRecommendations: final, availableColors: Array.from(colorsInBase) \};\
+            \}, [outfits, weather, homeFilterColor]); \
+\
+            // --- Manage Logic ---\
+            const manageList = useMemo(() => \{\
+                let filtered = outfits.filter(o => \{\
+                    let match = true;\
+                    if (manageFilterColor && (!o.colors || !o.colors.includes(manageFilterColor))) match = false;\
+                    if (manageFilterSeason && (!o.seasons || !o.seasons.includes(manageFilterSeason))) match = false;\
+                    if (manageFilterRainFriendly && o.isNotRainFriendly) match = false;\
+                    return match;\
+                \});\
+                return filtered.sort((a, b) => b.id - a.id);\
+            \}, [outfits, manageFilterColor, manageFilterSeason, manageFilterRainFriendly]);\
+\
+            const activeFilterCount = useMemo(() => \{\
+                let count = 0;\
+                if (manageFilterColor) count++;\
+                if (manageFilterSeason) count++;\
+                if (manageFilterRainFriendly) count++;\
+                return count;\
+            \}, [manageFilterColor, manageFilterSeason, manageFilterRainFriendly]);\
+\
+            // --- Actions ---\
+\
+            const handleSelectOutfit = (id) => \{\
+                // Selection disabled for pure browsing mode\
+            \};\
+\
+            const confirmSelection = () => \{\
+                if (!selectedOutfitId) return;\
+                setViewState('result');\
+                handleAIFeedback(outfits.find(o => o.id === selectedOutfitId));\
+            \};\
+\
+            const resetSelection = () => \{\
+                setViewState('browsing');\
+            \};\
+\
+            const confirmDelete = () => \{\
+                if (deleteId) \{\
+                    setOutfits(outfits.filter(o => o.id !== deleteId));\
+                    setDeleteId(null);\
+                \}\
+            \};\
+\
+            const handleEdit = (outfit, e) => \{\
+                e.stopPropagation();\
+                setLastView(view); \
+                setNewOutfit(\{\
+                    id: outfit.id,\
+                    image: outfit.image,\
+                    seasons: outfit.seasons || [],\
+                    isNotRainFriendly: outfit.isNotRainFriendly || false,\
+                    colors: outfit.colors || [],\
+                    highlight: outfit.highlight || ""\
+                \});\
+                setIsFormDirty(false);\
+                setView('create');\
+            \};\
+\
+            const handleSave = () => \{\
+                if (!newOutfit.image) return alert("\uc0\u35531 \u19978 \u20659 \u22294 \u29255 ");\
+                if (!newOutfit.seasons || newOutfit.seasons.length === 0) return alert("\uc0\u35531 \u33267 \u23569 \u36984 \u25799 \u19968 \u20491 \u23395 \u31680 ");\
+\
+                if (newOutfit.id) \{\
+                    const updated = outfits.map(o => o.id === newOutfit.id ? newOutfit : o);\
+                    setOutfits(updated);\
+                \} else \{\
+                    const created = \{\
+                    ...newOutfit,\
+                    id: Date.now(),\
+                    \};\
+                    setOutfits([...outfits, created]);\
+                \}\
+                \
+                setIsFormDirty(false);\
+                setNewOutfit(\{ id: null, image: "", seasons: [], isNotRainFriendly: false, colors: [], highlight: "" \});\
+                setView('manage'); \
+            \};\
+\
+            const handleImageUpload = (e) => \{\
+                const file = e.target.files[0];\
+                if (file) \{\
+                    const reader = new FileReader();\
+                    reader.onloadend = () => updateNewOutfit(\{ image: reader.result \});\
+                    reader.readAsDataURL(file);\
+                \}\
+            \};\
+\
+            // --- AI ---\
+            const handleAIAnalyze = async () => \{\
+                const effectiveKey = getEffectiveApiKey();\
+                if (!effectiveKey) return; // User cancelled prompt\
+\
+                if (!newOutfit.image) return alert("\uc0\u35531 \u20808 \u19978 \u20659 \u22294 \u29255 \u65281 ");\
+                setIsAnalyzing(true);\
+                try \{\
+                    const prompt = `\uc0\u20998 \u26512 \u22294 \u29255 : \u23395 \u31680 (summer/spring_autumn/winter), \u33394 \u31995 ($\{COLORS.map(c=>c.id).join(',')\})\u12290 \u20006 \u29992 \u32321 \u39636 \u20013 \u25991 \u23531 1\u21477 \u31777 \u30701 \u30340 \u12300 \u31359 \u25645 \u20142 \u40670 \u12301 (highlight)\u65292 \u20363 \u22914 \u65306 \u12300 \u29980 \u32654 \u30340 \u31881 \u33394 \u31995 \u25645 \u37197 \u65292 \u36969 \u21512 \u32004 \u26371 \u65281 \u12301 (15\u23383 \u20197 \u20839 )\u12290 \u22238 \u20659 JSON\u26684 \u24335 \u12290 `;\
+                    const jsonStr = await generateGeminiContent(effectiveKey, prompt, newOutfit.image, true);\
+                    const result = JSON.parse(cleanJsonString(jsonStr)); \
+                    updateNewOutfit(\{\
+                        seasons: result.seasons || newOutfit.seasons,\
+                        colors: result.colors || newOutfit.colors,\
+                        highlight: result.highlight || ""\
+                    \});\
+                \} catch (e) \{\
+                    console.error("AI Analyze Error:", e);\
+                    alert("AI \uc0\u20998 \u26512 \u22833 \u25943 \u65292 \u35531 \u27298 \u26597  API Key \u25110 \u32178 \u36335 \u36899 \u32218 ");\
+                \} finally \{\
+                    setIsAnalyzing(false);\
+                \}\
+            \};\
+\
+            const generateGeminiContent = async (key, prompt, imageBase64 = null, returnJson = false) => \{\
+                try \{\
+                    const payload = \{\
+                        contents: [\{ parts: [\{ text: prompt \}, ...(imageBase64 && imageBase64.includes(',') ? [\{ inlineData: \{ mimeType: "image/jpeg", data: imageBase64.split(',')[1] \} \}] : [])] \}]\
+                    \};\
+                    if (returnJson) \{\
+                        if (prompt.includes("\uc0\u20998 \u26512 \u22294 \u29255 ")) \{\
+                            payload.generationConfig = \{ responseMimeType: "application/json", responseSchema: \{ type: "OBJECT", properties: \{ seasons: \{ type: "ARRAY", items: \{ type: "STRING", enum: ["summer", "spring_autumn", "winter"] \} \}, colors: \{ type: "ARRAY", items: \{ type: "STRING", enum: COLORS.map(c => c.id) \} \}, highlight: \{ type: "STRING" \} \} \} \};\
+                        \} else \{\
+                            payload.generationConfig = \{ responseMimeType: "application/json", responseSchema: \{ type: "OBJECT", properties: \{ compliment: \{ type: "STRING" \}, highlight: \{ type: "STRING" \} \} \} \};\
+                        \}\
+                    \}\
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=$\{key\}`, \{ method: 'POST', headers: \{ 'Content-Type': 'application/json' \}, body: JSON.stringify(payload) \});\
+                    const data = await response.json();\
+                    if (!response.ok) throw new Error(data.error?.message || "API Request Failed");\
+                    return data.candidates[0].content.parts[0].text;\
+                \} catch (error) \{\
+                    console.error(error); throw error;\
+                \}\
+            \};\
+\
+            const handleAIFeedback = async (outfit) => \{\
+                const effectiveKey = getEffectiveApiKey();\
+                if (!effectiveKey) return; \
+\
+                setIsGeneratingComment(true);\
+                try \{\
+                    const prompt = `\
+                    \uc0\u29694 \u22312 $\{weather.name\}\u22825 \u27683 $\{weather.minTemp\}-$\{weather.maxTemp\}\u24230 \u65292 \u38477 \u38632 \u27231 \u29575 $\{weather.rainProb\}%\u12290 \
+                    \uc0\u36889 \u22871 \u34915 \u26381 \u21253 \u21547 \u65306 $\{outfit.seasons.join(',')\}\u23395 , \u38991 \u33394 :$\{outfit.colors.join(',')\}\u12290 \
+                    \uc0\u35531 \u37341 \u23565 \u36889 \u22871 \u31359 \u25645 \u36914 \u34892 \u40670 \u35413 \u65292 \u22238 \u20659  JSON \u26684 \u24335 \u65306 \
+                    \{ \
+                        "compliment": "\uc0\u19968 \u21477 \u20805 \u28415 \u29105 \u24773 \u12289 \u24773 \u32210 \u20729 \u20540 \u30340 \u35463 \u29518 (30-50\u23383 )", \
+                        "highlight": "\uc0\u36889 \u22871 \u31359 \u25645 \u30340 \u19968 \u20491 \u20855 \u39636 \u20142 \u40670 \u25110 \u29305 \u33394 \u20998 \u26512 (30\u23383 )" \
+                    \}\uc0\u12290 \
+                    \uc0\u35531 \u29992 \u32321 \u39636 \u20013 \u25991 \u65292 \u35486 \u27683 \u26997 \u24230 \u27491 \u38754 \u12289 \u40723 \u21237 \u65292 \u21152 \u19978 emoji\u12290 \
+                    `;\
+                    const jsonStr = await generateGeminiContent(effectiveKey, prompt, null, true);\
+                    const result = JSON.parse(cleanJsonString(jsonStr)); \
+                    setAiFeedback(result);\
+                \} catch (e) \{\
+                    console.error("AI Feedback Error:", e);\
+                    setAiFeedback(\{ compliment: "\uc0\u36889 \u22871 \u31359 \u25645 \u22826 \u26834 \u20102 \u65292 \u31777 \u30452 \u26159 \u28858 \u20320 \u37327 \u36523 \u25171 \u36896 \u30340 \u65281 ", highlight: "\u33258 \u20449 \u23601 \u26159 \u20320 \u26368 \u22909 \u30340 \u26178 \u23578 \u21934 \u21697 \u65281 " \});\
+                \} finally \{\
+                    setIsGeneratingComment(false);\
+                \}\
+            \};\
+\
+            // Dynamic visual stats logic for gradient bars\
+            const tempRangeLeft = Math.max(0, Math.min(100, ((weather.minTemp - 0) / 40) * 100));\
+            const tempRangeRight = Math.max(0, Math.min(100, ((40 - weather.maxTemp) / 40) * 100));\
+\
+            return (\
+                <div className="min-h-screen bg-[#F8FAFC] text-slate-700 font-sans pb-28 md:pb-10 relative overflow-hidden">\
+                    \{/* Cool Toned Background Blobs */\}\
+                    <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-cyan-100/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply"></div>\
+                    <div className="fixed bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-blue-100/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply"></div>\
+                    <div className="fixed top-[40%] right-[30%] w-[300px] h-[300px] bg-slate-100/50 rounded-full blur-[80px] pointer-events-none"></div>\
+\
+                    <div className="max-w-3xl mx-auto px-4 py-6 relative z-10">\
+                        <div className="flex justify-between items-center mb-4 md:mb-6">\
+                            <div className="hidden md:flex text-2xl font-extrabold text-slate-800 tracking-tight items-center gap-2">\
+                                <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center text-white">\
+                                    <Heart size=\{18\} fill="white"/>\
+                                </div>\
+                                \uc0\u20170 \u22825 \u31359 \u20160 \u40636 \
+                            </div>\
+                            <div className="hidden md:block">\
+                                <TabBarDesktop view=\{view\} onViewChange=\{handleViewChange\} />\
+                            </div>\
+                        </div>\
+\
+                        \{view === 'home' && (\
+                            <div className="animate-fade-in">\
+                                \{/* Weather Bar (Compact Card Style) */\}\
+                                <div className="mb-6 p-4 rounded-3xl bg-white shadow-sm border border-slate-100 flex items-center justify-between gap-4 relative overflow-hidden">\
+                                    <div className="relative z-10 flex items-center gap-4 w-full">\
+                                        \{/* Icon Box */\}\
+                                        <div className="w-12 h-12 rounded-2xl bg-cyan-50 flex items-center justify-center text-cyan-600 shrink-0">\
+                                            \{weather.rainProb > 50 ? <CloudRain size=\{24\}/> : <Sun size=\{24\}/>\}\
+                                        </div>\
+                                        \
+                                        \{/* Info */\}\
+                                        <div className="flex-1">\
+                                            <div className="flex items-center justify-between mb-1">\
+                                                <button \
+                                                    onClick=\{() => setIsLocationModalOpen(true)\}\
+                                                    className="flex items-center gap-1 group rounded-lg hover:bg-slate-50 p-1 -ml-1 transition-colors"\
+                                                >\
+                                                    <h2 className="text-slate-800 font-bold text-lg tracking-tight">\{weather.name\}</h2>\
+                                                    <ChevronDown size=\{16\} className="text-slate-400 group-hover:text-slate-600"/>\
+                                                </button>\
+                                            </div>\
+                                            \
+                                            <div className="flex items-center gap-3 w-full">\
+                                                \{/* Temp Bar */\}\
+                                                <div className="flex items-center gap-2 flex-1">\
+                                                    \{/* Changed text-[10px] to text-xs (14px) */\}\
+                                                    <span className="text-xs font-bold text-slate-400 w-6">\{weather.minTemp\}\'b0</span>\
+                                                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden relative">\
+                                                        <div \
+                                                            className="absolute top-0 bottom-0 bg-gradient-to-r from-cyan-300 to-blue-400 rounded-full" \
+                                                            style=\{\{left: `$\{tempRangeLeft\}%`, right: `$\{tempRangeRight\}%`\}\}\
+                                                        ></div>\
+                                                    </div>\
+                                                    \{/* Changed text-[10px] to text-xs (14px) */\}\
+                                                    <span className="text-xs font-bold text-slate-600 w-6 text-right">\{weather.maxTemp\}\'b0</span>\
+                                                </div>\
+                                                \
+                                                \{/* Rain Bar */\}\
+                                                <div className="flex items-center gap-1 w-12 justify-end">\
+                                                    <Droplets size=\{10\} className="text-cyan-500 fill-current"/>\
+                                                    \{/* Changed text-[10px] to text-xs (14px) */\}\
+                                                    <span className="text-xs font-bold text-cyan-600">\{weather.rainProb\}%</span>\
+                                                </div>\
+                                            </div>\
+                                        </div>\
+                                    </div>\
+                                </div>\
+\
+                                <h1 className="text-2xl font-bold text-slate-800 mb-5 px-1 tracking-tight">\uc0\u20170 \u22825 \u31359 \u20160 \u40636 </h1>\
+                                \
+                                \{outfits.length === 0 ? (\
+                                    <EmptyState \
+                                        message="\uc0\u34915 \u27331 \u31354 \u31354 \u22914 \u20063 " \
+                                        subMessage="\uc0\u24555 \u21435 \u26032 \u22686 \u20320 \u30340 \u31532 \u19968 \u22871 \u31359 \u25645 \u65292 \u35731  AI \u24171 \u20320 \u27770 \u23450 \u26126 \u22825 \u31359 \u20160 \u40636 \u21543 \u65281 "\
+                                        action=\{() => handleViewChange('create', true)\}\
+                                    />\
+                                ) : (\
+                                    <>\
+                                        \{/* Filter Bar */\}\
+                                        <div className="mb-6 space-y-3">\
+                                            <div className="overflow-x-auto pb-2 scrollbar-hide">\
+                                                <div className="flex gap-2 px-1">\
+                                                    <button onClick=\{() => setHomeFilterColor(null)\} className=\{`flex-shrink-0 px-5 py-2.5 rounded-full text-xs font-bold transition-all border $\{!homeFilterColor ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200'\}`\}>\uc0\u20840 \u37096 </button>\
+                                                    \{COLORS.filter(c => availableColors.includes(c.id)).map(c => (\
+                                                        <button key=\{c.id\} onClick=\{() => setHomeFilterColor(homeFilterColor === c.id ? null : c.id)\} className=\{`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full border transition-all $\{homeFilterColor === c.id ? 'bg-white ring-2 ring-cyan-500 border-transparent shadow-md' : 'bg-white border-slate-200 shadow-sm hover:bg-slate-50'\}`\}>\
+                                                                <div className="w-3 h-3 rounded-full border border-slate-100" style=\{\{backgroundColor: c.hex\}\}></div>\
+                                                                <span className=\{`text-xs $\{homeFilterColor === c.id ? 'font-bold text-slate-800' : 'text-slate-500'\}`\}>\{c.label\}</span>\
+                                                        </button>\
+                                                    ))\}\
+                                                </div>\
+                                            </div>\
+                                        </div>\
+\
+                                        \{/* Grid - Clean Image Only Cards - NO SELECTION INTERACTION */\}\
+                                        \{homeRecommendations.length > 0 ? (\
+                                            <div className="grid grid-cols-2 gap-4 mb-32 md:mb-24 px-1">\
+                                            \{homeRecommendations.map((outfit) => \{\
+                                                const isSelected = selectedOutfitId === outfit.id;\
+                                                return (\
+                                                <div key=\{outfit.id\} onClick=\{() => handleSelectOutfit(outfit.id)\} className=\{`relative group rounded-3xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 border bg-white $\{isSelected ? 'border-cyan-400 ring-4 ring-cyan-50' : 'border-white'\}`\}>\
+                                                    <div className="aspect-[3/4] bg-slate-100 relative">\
+                                                        <img src=\{outfit.image\} alt="Outfit" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />\
+                                                        \
+                                                        \{/* Rain Indicator Overlay */\}\
+                                                        \{outfit.isNotRainFriendly && (\
+                                                            <div className="absolute top-3 right-3">\
+                                                                <span className="bg-white/90 backdrop-blur-md text-slate-400 text-xs w-8 h-8 flex items-center justify-center rounded-full shadow-sm" title="\uc0\u19981 \u23452 \u38632 \u22825 ">\
+                                                                    <Umbrella size=\{16\} className="line-through"/>\
+                                                                </span>\
+                                                            </div>\
+                                                        )\}\
+                                                    </div>\
+                                                </div>\
+                                                )\
+                                            \})\}\
+                                            </div>\
+                                        ) : (\
+                                            <div className="text-center py-24 bg-white/50 rounded-3xl border border-slate-200 border-dashed mx-1">\
+                                                <p className="text-slate-500 text-sm font-medium">\uc0\u27794 \u26377 \u31526 \u21512 \u26781 \u20214 \u30340 \u31359 \u25645 </p>\
+                                                \{homeFilterColor && <p className="text-xs text-slate-400 mt-2">\uc0\u35430 \u33879 \u21462 \u28040 \u38991 \u33394 \u31721 \u36984 \u65311 </p>\}\
+                                            </div>\
+                                        )\}\
+                                    </>\
+                                )\}\
+                            </div>\
+                        )\}\
+\
+                        \{view === 'create' && (\
+                            <div className="animate-fade-in max-w-lg mx-auto bg-white shadow-xl shadow-slate-200/50 border border-slate-100 p-6 md:p-8 rounded-[2.5rem]">\
+                                <div className="flex justify-between items-center mb-6">\
+                                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">\
+                                        \{newOutfit.id ? '\uc0\u32232 \u36655 \u31359 \u25645 ' : '\u26032 \u22686 \u31359 \u25645 '\}\
+                                        \{isAnalyzing && <span className="text-xs font-normal text-cyan-600 bg-cyan-50 px-2 py-1 rounded-full animate-pulse flex items-center gap-1"><Loader2 size=\{12\} className="animate-spin"/> AI</span>\}\
+                                    </h2>\
+                                    <div className="flex gap-2">\
+                                        <button onClick=\{handleCancelCreate\} className="text-xs font-bold text-slate-400 hover:text-slate-600 bg-slate-50 px-4 py-2 rounded-full transition-colors">\
+                                            \uc0\u21462 \u28040 \
+                                        </button>\
+                                    </div>\
+                                </div>\
+                                \
+                                <div className="space-y-6">\
+                                    \{/* 1. Image Upload & AI Button Container */\}\
+                                    <div className="flex flex-col gap-4">\
+                                        \{/* Square Image Box */\}\
+                                        <div className="w-full aspect-square bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center relative overflow-hidden group hover:border-cyan-300 transition-colors">\
+                                            \{newOutfit.image ? (\
+                                                <img src=\{newOutfit.image\} className="w-full h-full object-cover" alt="Preview"/>\
+                                            ) : (\
+                                                <div className="text-center p-6 text-slate-400">\
+                                                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-slate-300 group-hover:text-cyan-400 group-hover:scale-110 transition-all">\
+                                                        <Camera size=\{32\}/>\
+                                                    </div>\
+                                                    <p className="text-xs font-bold tracking-wide">\uc0\u40670 \u25802 \u19978 \u20659 \u29031 \u29255 </p>\
+                                                </div>\
+                                            )\}\
+                                            <input type="file" accept="image/*" onChange=\{handleImageUpload\} className="absolute inset-0 opacity-0 cursor-pointer" />\
+                                            \{newOutfit.image && (\
+                                                <button onClick=\{(e) => \{e.stopPropagation(); updateNewOutfit(\{image: ''\})\}\} className="absolute top-4 right-4 bg-white/90 p-2.5 rounded-full shadow-md text-slate-400 hover:text-red-500 hover:bg-white transition-all"><Trash2 size=\{18\}/></button>\
+                                            )\}\
+                                        </div>\
+                                        \
+                                        \{/* AI Button Below Image */\}\
+                                        <button \
+                                            onClick=\{handleAIAnalyze\} \
+                                            disabled=\{!newOutfit.image || isAnalyzing\} \
+                                            className=\{`w-full py-4 rounded-2xl text-sm font-bold transition-all flex items-center justify-center gap-2 \
+                                                $\{!newOutfit.image \
+                                                    ? 'bg-slate-100 text-slate-300 cursor-not-allowed' \
+                                                    : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-200/50 active:scale-95'\
+                                                \}`\}\
+                                        >\
+                                            \{isAnalyzing ? <Loader2 className="animate-spin" size=\{18\}/> : <Sparkles size=\{18\}/>\} \
+                                            <span>AI \uc0\u33258 \u21205 \u36776 \u35672 </span>\
+                                        </button>\
+                                    </div>\
+                                    \
+                                    \{/* 2. Compact Selectors */\}\
+                                    <div className="space-y-6">\
+                                        <div>\
+                                            <label className="text-xs font-extrabold text-slate-400 mb-3 block uppercase tracking-wider pl-1">\uc0\u36969 \u21512 \u23395 \u31680 </label>\
+                                            <div className="flex gap-2">\
+                                                \{SEASONS.map(s => \{\
+                                                    const isSelected = newOutfit.seasons && newOutfit.seasons.includes(s.id);\
+                                                    const Icon = s.icon;\
+                                                    return (\
+                                                        <button key=\{s.id\} onClick=\{() => toggleSeason(s.id)\} className=\{`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-bold border-2 transition-all $\{isSelected ? `$\{s.color\} border-current/20 shadow-sm` : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'\}`\}>\
+                                                            <Icon size=\{18\} /> \{s.label\}\
+                                                        </button>\
+                                                    );\
+                                                \})\}\
+                                            </div>\
+                                        </div>\
+                                        <div>\
+                                            <label className="text-xs font-extrabold text-slate-400 mb-3 block uppercase tracking-wider pl-1">\uc0\u20027 \u35201 \u33394 \u31995 </label>\
+                                            <div className="flex flex-wrap gap-2.5">\
+                                                \{COLORS.map(c => \{\
+                                                    const isSelected = newOutfit.colors && newOutfit.colors.includes(c.id);\
+                                                    return (\
+                                                        <button key=\{c.id\} onClick=\{() => toggleColor(c.id)\} className=\{`w-9 h-9 rounded-full border-2 transition-all flex items-center justify-center $\{isSelected ? 'scale-110 ring-2 ring-cyan-400 border-white shadow-md' : 'border-transparent opacity-80 hover:opacity-100 hover:scale-105'\}`\} style=\{\{backgroundColor: c.hex\}\} title=\{c.label\}>\
+                                                            \{isSelected && <Check size=\{14\} className=\{c.id === 'white' ? 'text-black' : 'text-white'\} strokeWidth=\{3\} />\}\
+                                                        </button>\
+                                                    )\
+                                                \})\}\
+                                            </div>\
+                                        </div>\
+                                    </div>\
+\
+                                    \{/* 3. Rain Toggle */\}\
+                                    <button \
+                                        onClick=\{() => updateNewOutfit(\{ isNotRainFriendly: !newOutfit.isNotRainFriendly \})\}\
+                                        className=\{`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all $\{newOutfit.isNotRainFriendly ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'\}`\}\
+                                    >\
+                                        <div className="flex items-center gap-4">\
+                                            <div className=\{`p-3 rounded-full $\{newOutfit.isNotRainFriendly ? 'bg-red-200 text-red-600' : 'bg-slate-100 text-slate-400'\}`\}>\
+                                                <CloudRain size=\{20\}/>\
+                                            </div>\
+                                            <div className="text-left">\
+                                                <span className=\{`text-sm font-bold block $\{newOutfit.isNotRainFriendly ? 'text-red-700' : 'text-slate-600'\}`\}>\uc0\u19979 \u38632 \u22825 \u19981 \u31359 </span>\
+                                                \{/* Changed text-[10px] to text-xs (14px) */\}\
+                                                <span className="text-xs text-slate-400 font-medium">\uc0\u33509 \u26448 \u36074 \u24597 \u27700 \u25110 \u26131 \u39634 \u35531 \u21246 \u36984 </span>\
+                                            </div>\
+                                        </div>\
+                                        <div className=\{`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors $\{newOutfit.isNotRainFriendly ? 'bg-red-500 border-red-500' : 'border-slate-300 bg-white'\}`\}>\
+                                            \{newOutfit.isNotRainFriendly && <Check size=\{14\} className="text-white"/>\}\
+                                        </div>\
+                                    </button>\
+\
+                                    \{/* Action Buttons */\}\
+                                    <div className="flex gap-3 pt-4">\
+                                        <button onClick=\{handleCancelCreate\} className="flex-1 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all text-sm flex items-center justify-center gap-2">\
+                                            \uc0\u21462 \u28040 \
+                                        </button>\
+                                        <button onClick=\{handleSave\} className="flex-[2] bg-slate-900 hover:bg-black text-white font-bold py-4 rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95 text-sm flex items-center justify-center gap-2">\
+                                            <Check size=\{18\}/> \{newOutfit.id ? '\uc0\u20786 \u23384 \u20462 \u25913 ' : '\u23436 \u25104 \u24314 \u31435 '\}\
+                                        </button>\
+                                    </div>\
+                                </div>\
+                            </div>\
+                        )\}\
+\
+                        \{view === 'manage' && (\
+                            <div className="animate-fade-in">\
+                                <div className="flex justify-between items-end mb-6 px-1">\
+                                    <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">\uc0\u20840 \u37096 \u31359 \u25645 </h2>\
+                                    <div className="flex items-center gap-2">\
+                                        <button onClick=\{() => setShowFilters(!showFilters)\} className=\{`w-10 h-10 flex items-center justify-center rounded-full transition-all $\{showFilters || activeFilterCount > 0 ? 'bg-cyan-500 text-white shadow-md shadow-cyan-200' : 'bg-white text-slate-400 shadow-sm border border-slate-100'\}`\}>\
+                                            <Filter size=\{18\}/>\
+                                        </button>\
+                                        <span className="text-slate-500 text-xs font-bold bg-white px-3 py-2.5 rounded-full shadow-sm border border-slate-100">\{manageList.length\} \uc0\u20214 </span>\
+                                    </div>\
+                                </div>\
+\
+                                \{/* Filters */\}\
+                                \{showFilters && (\
+                                    <div className="mb-6 p-4 bg-white/80 backdrop-blur-md rounded-[2rem] border border-white shadow-sm animate-fade-in space-y-4 mx-1">\
+                                        <div>\
+                                            <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">\uc0\u23395 \u31680 </span>\
+                                            <div className="flex gap-2">\
+                                                <button onClick=\{() => setManageFilterSeason(null)\} className=\{`px-4 py-2 rounded-xl text-xs font-bold border transition-colors $\{!manageFilterSeason ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-100'\}`\}>\uc0\u20840 \u37096 </button>\
+                                                \{SEASONS.map(s => (\
+                                                    <button key=\{s.id\} onClick=\{() => setManageFilterSeason(manageFilterSeason === s.id ? null : s.id)\} className=\{`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors $\{manageFilterSeason === s.id ? s.color : 'bg-white text-slate-400 border-slate-100'\}`\}>\
+                                                        \{s.label\}\
+                                                    </button>\
+                                                ))\}\
+                                            </div>\
+                                        </div>\
+                                        <div>\
+                                            <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">\uc0\u38991 \u33394 </span>\
+                                            <div className="flex flex-wrap gap-2">\
+                                                <button onClick=\{() => setManageFilterColor(null)\} className=\{`px-4 py-2 rounded-xl text-xs font-bold border transition-colors $\{!manageFilterColor ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'\}`\}>\uc0\u20840 \u37096 </button>\
+                                                \{COLORS.map(c => (\
+                                                    <button key=\{c.id\} onClick=\{() => setManageFilterColor(manageFilterColor === c.id ? null : c.id)\} className=\{`w-8 h-8 rounded-full border flex items-center justify-center transition-transform $\{manageFilterColor === c.id ? 'ring-2 ring-cyan-400 scale-110' : 'opacity-80'\}`\} style=\{\{backgroundColor: c.hex\}\}>\
+                                                        \{manageFilterColor === c.id && <Check size=\{12\} className=\{c.id === 'white' ? 'text-black' : 'text-white'\}/>\}\
+                                                    </button>\
+                                                ))\}\
+                                            </div>\
+                                        </div>\
+                                        <div>\
+                                            <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">\uc0\u29305 \u27530 \u26781 \u20214 </span>\
+                                            <div className="flex gap-2">\
+                                                <button onClick=\{() => setManageFilterRainFriendly(!manageFilterRainFriendly)\} className=\{`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border transition-colors $\{manageFilterRainFriendly ? 'bg-blue-100 text-blue-600 border-blue-200' : 'bg-white text-slate-400 border-slate-100'\}`\}>\
+                                                    <Umbrella size=\{14\}/> \uc0\u38632 \u22825 OK\
+                                                </button>\
+                                            </div>\
+                                        </div>\
+                                    </div>\
+                                )\}\
+\
+                                \{outfits.length === 0 ? (\
+                                    <EmptyState \
+                                        message="\uc0\u36996 \u27794 \u26377 \u20219 \u20309 \u34915 \u29289 " \
+                                        subMessage="\uc0\u38283 \u22987 \u25972 \u29702 \u20320 \u30340 \u34915 \u27331 \u65292 \u35731 \u29983 \u27963 \u26356 \u26377 \u26781 \u29702 \u65281 "\
+                                        action=\{() => handleViewChange('create', true)\}\
+                                    />\
+                                ) : (\
+                                    <div className="flex flex-col gap-4 pb-20">\
+                                        \{manageList.length > 0 ? manageList.map(outfit => (\
+                                            <div key=\{outfit.id\} className="flex bg-white rounded-[1.5rem] p-3 pr-4 border border-white shadow-sm items-start gap-4 hover:shadow-md transition-shadow">\
+                                                <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gray-50 flex-shrink-0">\
+                                                    <img src=\{outfit.image\} className="w-full h-full object-cover" alt="Outfit"/>\
+                                                </div>\
+                                                <div className="flex-1 min-w-0 flex flex-col gap-2 py-1">\
+                                                    <div className="flex items-start justify-between">\
+                                                        <div className="flex flex-wrap gap-1.5">\
+                                                            \{/* Changed text-[10px] to text-xs (14px) */\}\
+                                                            \{outfit.seasons.map(sid => <SeasonBadge key=\{sid\} seasonId=\{sid\} minimal />)\}\
+                                                            \{outfit.isNotRainFriendly && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold bg-red-50 text-red-500 border border-red-100"><Umbrella size=\{10\} className="line-through"/> \uc0\u24597 \u27700 </span>\}\
+                                                        </div>\
+                                                        <div className="flex gap-1 -mr-1">\
+                                                            <button onClick=\{(e) => handleEdit(outfit, e)\} className="p-2 rounded-full text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"><Pencil size=\{16\}/></button>\
+                                                            <button onClick=\{() => setDeleteId(outfit.id)\} className="p-2 rounded-full text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size=\{16\}/></button>\
+                                                        </div>\
+                                                    </div>\
+                                                    \
+                                                    \{/* Highlight Text in Manage View (Full Sentence) */\}\
+                                                    <p className="text-xs text-slate-600 leading-relaxed font-medium bg-slate-50 p-2.5 rounded-xl">\
+                                                        \{outfit.highlight ? (\
+                                                            <>\
+                                                                <span className="mr-1 text-base">\uc0\u55357 \u56481 </span>\{outfit.highlight\}\
+                                                            </>\
+                                                        ) : (\
+                                                            <span className="text-slate-400 italic">\uc0\u26283 \u28961 \u20142 \u40670 \u25551 \u36848 </span>\
+                                                        )\}\
+                                                    </p>\
+\
+                                                    <div className="flex gap-1.5 mt-auto pt-1">\
+                                                        \{outfit.colors.map(cid => \{ const c = COLORS.find(x => x.id === cid); return c ? <div key=\{cid\} className="w-2.5 h-2.5 rounded-full border border-slate-200" style=\{\{backgroundColor: c.hex\}\}></div> : null; \})\}\
+                                                    </div>\
+                                                </div>\
+                                            </div>\
+                                        )) : (\
+                                            <div className="text-center py-16 bg-white/50 rounded-[2rem] border-2 border-white border-dashed">\
+                                                <div className="text-4xl mb-2">\uc0\u55358 \u56784 </div>\
+                                                <div className="text-slate-500 font-bold">\uc0\u25214 \u19981 \u21040 \u31526 \u21512 \u26781 \u20214 \u30340 \u34915 \u29289 </div>\
+                                                <div className="text-xs text-slate-400 mt-1">\uc0\u35430 \u33879 \u25918 \u23532 \u31721 \u36984 \u26781 \u20214 \u30475 \u30475 \u65311 </div>\
+                                            </div>\
+                                        )\}\
+                                    </div>\
+                                )\}\
+\
+                                \{/* Custom Delete Modal */\}\
+                                \{deleteId && (\
+                                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-fade-in">\
+                                        <div className="bg-white rounded-[2rem] p-6 shadow-2xl max-w-xs w-full border border-white/50">\
+                                            <div className="flex flex-col items-center gap-4 text-center">\
+                                                <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center text-red-500 mb-1">\
+                                                    <AlertCircle size=\{28\}/>\
+                                                </div>\
+                                                <div>\
+                                                    <h3 className="text-xl font-bold text-slate-800">\uc0\u30906 \u23450 \u35201 \u21034 \u38500 \u21966 \u65311 </h3>\
+                                                    <p className="text-sm text-slate-500 mt-2 leading-relaxed">\uc0\u36889 \u20214 \u31359 \u25645 \u23559 \u26371 \u24478 \u20320 \u30340 \u34915 \u27331 \u20013 \u27704 \u20037 \u28040 \u22833 \u65292 \u28961 \u27861 \u24489 \u21407 \u21908 \u65281 </p>\
+                                                </div>\
+                                                <div className="flex gap-3 w-full mt-4">\
+                                                    <button onClick=\{() => setDeleteId(null)\} className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm">\uc0\u21462 \u28040 </button>\
+                                                    <button onClick=\{confirmDelete\} className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-200 text-sm">\uc0\u21034 \u38500 </button>\
+                                                </div>\
+                                            </div>\
+                                        </div>\
+                                    </div>\
+                                )\}\
+                            </div>\
+                        )\}\
+\
+                        \{/* Location Modal */\}\
+                        \{isLocationModalOpen && (\
+                            <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 md:p-4 animate-fade-in">\
+                                <div className="bg-white rounded-t-[2rem] md:rounded-[2rem] w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden shadow-2xl">\
+                                    <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">\
+                                        <h3 className="font-bold text-slate-800 text-lg">\uc0\u36984 \u25799 \u22320 \u21312 </h3>\
+                                        <button onClick=\{() => setIsLocationModalOpen(false)\} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size=\{20\}/></button>\
+                                    </div>\
+                                    <div className="overflow-y-auto p-4 space-y-2 pb-8 scrollbar-hide">\
+                                        \{LOCATIONS.map((loc, index) => (\
+                                            <button \
+                                                key=\{index\}\
+                                                onClick=\{() => \{ setLocationIndex(index); setIsLocationModalOpen(false); \}\}\
+                                                className=\{`w-full p-4 rounded-2xl flex items-center justify-between transition-all $\{locationIndex === index ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'\}`\}\
+                                            >\
+                                                <div className="flex flex-col items-start">\
+                                                    <span className=\{`font-bold text-base $\{locationIndex === index ? 'text-white' : 'text-slate-800'\}`\}>\{loc.name\}</span>\
+                                                    <span className=\{`text-xs $\{locationIndex === index ? 'text-slate-300' : 'text-slate-400'\}`\}>\{loc.country\}</span>\
+                                                </div>\
+                                                \{locationIndex === index && <div className="bg-white/20 p-1 rounded-full"><Check size=\{16\} className="text-white"/></div>\}\
+                                            </button>\
+                                        ))\}\
+                                    </div>\
+                                </div>\
+                            </div>\
+                        )\}\
+                    </div>\
+\
+                    <TabBarMobile view=\{view\} onViewChange=\{handleViewChange\} />\
+                </div>\
+            );\
+        \}\
+\
+        const root = ReactDOM.createRoot(document.getElementById('root'));\
+        root.render(<App />);\
+    </script>\
+</body>\
+</html>}
