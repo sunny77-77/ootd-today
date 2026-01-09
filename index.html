@@ -872,7 +872,8 @@
                     )}
 
                     {/* Main Content Area - Scrollable */}
-                    <div className="flex-1 overflow-y-auto scrollbar-hide pb-28 md:pb-10 z-10">
+                    {/* 增加這裡的 pb-28 到 pb-44，確保內容可以捲動到按鈕上方，而不是被擋住 */}
+                    <div className="flex-1 overflow-y-auto scrollbar-hide pb-44 md:pb-10 z-10">
                         <div className="max-w-3xl mx-auto px-4 py-6">
                             <div className="flex justify-between items-center mb-4 md:mb-6">
                                 <div className="hidden md:flex text-2xl font-extrabold text-slate-800 tracking-tight items-center gap-2">
@@ -1016,6 +1017,7 @@
                                         </div>
                                     </div>
                                     
+                                    {/* 移除這裡原本的 pb-32，讓卡片高度自然收縮 */}
                                     <div className="space-y-6">
                                         {/* 1. Image Upload */}
                                         <div className="flex flex-col gap-4">
@@ -1101,8 +1103,8 @@
                                             </div>
                                         </button>
 
-                                        {/* Action Buttons */}
-                                        <div className="flex gap-3 pt-4">
+                                        {/* Action Buttons - Desktop Only (Inside Card) */}
+                                        <div className="hidden md:flex gap-3 pt-4">
                                             <button onClick={handleCancelCreate} className="flex-1 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all text-sm flex items-center justify-center gap-2">
                                                 取消
                                             </button>
@@ -1266,52 +1268,19 @@
                         </div>
                     )}
 
-                    {isLocationModalOpen && (
-                        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
-                            <div className="bg-white rounded-t-[2rem] md:rounded-[2rem] w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden shadow-2xl h-[70vh] md:h-auto">
-                                <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
-                                    <div className="flex items-center gap-2">
-                                        {locationModalStep === 'city' && (
-                                            <button onClick={handleBackToCountry} className="p-1 -ml-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors">
-                                                <ChevronLeft size={24} />
-                                            </button>
-                                        )}
-                                        <h3 className="font-bold text-slate-800 text-lg">
-                                            {locationModalStep === 'country' ? '選擇國家' : selectedCountry}
-                                        </h3>
-                                    </div>
-                                    <button onClick={() => setIsLocationModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
-                                </div>
-                                <div className="overflow-y-auto p-4 space-y-2 pb-8 scrollbar-hide h-full">
-                                    {locationModalStep === 'country' && (
-                                        uniqueCountries.map(country => (
-                                            <button 
-                                                key={country}
-                                                onClick={() => handleSelectCountry(country)}
-                                                className="w-full p-4 rounded-2xl flex items-center justify-between transition-all bg-slate-50 text-slate-800 hover:bg-slate-100 group"
-                                            >
-                                                <span className="font-bold text-base">{country}</span>
-                                                <ChevronRight size={20} className="text-slate-300 group-hover:text-slate-500"/>
-                                            </button>
-                                        ))
-                                    )}
-                                    {locationModalStep === 'city' && (
-                                        LOCATIONS.map((loc, index) => {
-                                            if (loc.country !== selectedCountry) return null;
-                                            const isSelected = locationIndex === index;
-                                            return (
-                                                <button 
-                                                    key={index}
-                                                    onClick={() => handleSelectCity(index)}
-                                                    className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${isSelected ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-                                                >
-                                                    <span className={`font-bold text-base ${isSelected ? 'text-white' : 'text-slate-800'}`}>{loc.name}</span>
-                                                    {isSelected && <div className="bg-white/20 p-1 rounded-full"><Check size={16} className="text-white"/></div>}
-                                                </button>
-                                            );
-                                        })
-                                    )}
-                                </div>
+                    {/* Mobile Fixed Action Buttons (Moved Outside to prevent transform issues) */}
+                    {view === 'create' && (
+                        <div className="fixed bottom-[80px] left-0 right-0 p-4 bg-white/95 backdrop-blur-sm border-t border-slate-100 z-40 md:hidden animate-slide-up">
+                            <div className="flex gap-3 max-w-lg mx-auto">
+                                <button onClick={handleCancelCreate} className="flex-1 bg-slate-100 text-slate-500 font-bold py-3.5 rounded-2xl hover:bg-slate-200 transition-all text-sm flex items-center justify-center gap-2">
+                                    取消
+                                </button>
+                                <button 
+                                    onClick={handleSave} 
+                                    className={`flex-[2] py-3.5 rounded-2xl shadow-lg transition-all active:scale-95 text-sm flex items-center justify-center gap-2 font-bold ${!newOutfit.image ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-cyan-200'}`}
+                                >
+                                    {newOutfit.id ? '儲存修改' : '建立穿搭'}
+                                </button>
                             </div>
                         </div>
                     )}
