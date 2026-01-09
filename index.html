@@ -283,13 +283,13 @@
         const TabBarDesktop = ({ view, onViewChange }) => (
             <div className="flex gap-4">
                 <button onClick={() => onViewChange('home')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full transition-all text-sm font-bold ${view === 'home' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}>
-                    <LayoutGrid size={18} /> 今日穿搭
+                    <Shirt size={18} /> 今日穿搭
                 </button>
                 <button onClick={() => onViewChange('create', true)} className={`flex items-center gap-2 px-6 py-2.5 rounded-full transition-all text-sm font-bold ${view === 'create' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}>
-                    <Plus size={18} /> 新增
+                    <Plus size={18} /> 新增穿搭
                 </button>
                 <button onClick={() => onViewChange('manage')} className={`flex items-center gap-2 px-6 py-2.5 rounded-full transition-all text-sm font-bold ${view === 'manage' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-400 hover:bg-white hover:text-slate-600'}`}>
-                    <Shirt size={18} /> 全部穿搭
+                    <LayoutGrid size={18} /> 全部穿搭
                 </button>
             </div>
         );
@@ -297,7 +297,7 @@
         const TabBarMobile = ({ view, onViewChange }) => (
             <div className="fixed bottom-0 left-0 right-0 h-[84px] bg-white/95 backdrop-blur-md border-t border-slate-100 z-50 grid grid-cols-3 items-start pt-3 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] md:hidden">
                 <button onClick={() => onViewChange('home')} className={`flex flex-col items-center justify-center gap-1 transition-all ${view === 'home' ? 'text-cyan-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                    <LayoutGrid size={24} strokeWidth={view === 'home' ? 2.5 : 2} />
+                    <Shirt size={24} strokeWidth={view === 'home' ? 2.5 : 2} />
                     <span className="text-xs font-medium tracking-wide">今日穿搭</span>
                 </button>
                 
@@ -308,7 +308,7 @@
                 </div>
 
                 <button onClick={() => onViewChange('manage')} className={`flex flex-col items-center justify-center gap-1 transition-all ${view === 'manage' ? 'text-cyan-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                    <Shirt size={24} strokeWidth={view === 'manage' ? 2.5 : 2} />
+                    <LayoutGrid size={24} strokeWidth={view === 'manage' ? 2.5 : 2} />
                     <span className="text-xs font-medium tracking-wide">全部穿搭</span>
                 </button>
             </div>
@@ -1005,7 +1005,7 @@
                                                 className={`w-full py-4 rounded-2xl text-sm font-bold transition-all flex items-center justify-center gap-2 
                                                     ${isAnalyzing 
                                                         ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                                                        : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-200/50 active:scale-95'
+                                                        : 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-lg shadow-cyan-200/50 active:scale-95'
                                                     }`}
                                                 disabled={isAnalyzing}
                                             >
@@ -1071,8 +1071,7 @@
                                             </button>
                                             <button 
                                                 onClick={handleSave} 
-                                                disabled={!newOutfit.image}
-                                                className={`flex-[2] py-4 rounded-2xl shadow-xl transition-all active:scale-95 text-sm flex items-center justify-center gap-2 font-bold ${!newOutfit.image ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-slate-900 hover:bg-black text-white shadow-slate-200'}`}
+                                                className={`flex-[2] py-4 rounded-2xl shadow-xl transition-all active:scale-95 text-sm flex items-center justify-center gap-2 font-bold ${!newOutfit.image ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-cyan-200'}`}
                                             >
                                                 {newOutfit.id ? '儲存修改' : '建立穿搭'}
                                             </button>
