@@ -108,7 +108,8 @@
         // --- Icon Shim for Lucide in Browser ---
         const createLucideIcon = (iconName) => {
             return ({ size = 24, className, ...props }) => {
-                const iconData = lucide.icons[iconName];
+                if (!window.lucide || !window.lucide.icons) return null;
+                const iconData = window.lucide.icons[iconName];
                 if (!iconData) return null;
                 return (
                     <svg
@@ -168,14 +169,14 @@
 
 
         // --- Gemini API Configuration ---
+        // 為了安全起見，API Key 應該由使用者輸入，或是在後端環境變數中設定。
+        // 在此純前端 Demo 中，我們讓使用者在 UI 中輸入 Key。
         const apiKey = ""; 
 
         const getEffectiveApiKey = () => {
             if (apiKey && apiKey.length > 0) return apiKey;
             const stored = localStorage.getItem('gemini_api_key');
             if (stored && stored.trim() !== "") return stored;
-            
-            // Try prompt as fallback if modal isn't enough, but usually modal handles it.
             return null;
         };
 
@@ -205,6 +206,8 @@
             { country: "台灣", name: "連江縣", lat: 26.1552, lng: 119.9298 },
             { country: "日本", name: "東京", lat: 35.6895, lng: 139.6917 },
             { country: "韓國", name: "首爾", lat: 37.5665, lng: 126.9780 },
+            { country: "美國", name: "紐約", lat: 40.7128, lng: -74.0060 },
+            { country: "英國", name: "倫敦", lat: 51.5074, lng: -0.1278 },
         ];
 
         const SEASONS = [
@@ -241,6 +244,7 @@
                 isNotRainFriendly: true, 
                 colors: ['pink', 'white'], 
                 lastWorn: new Date().toISOString(),
+                createdAt: "2025-01-08T14:30:00.000Z", // Added Mock Creation Date
                 highlight: "溫柔粉色針織衫搭簡約下身，展現甜美氣質，約會首選！"
             },
             {
@@ -250,6 +254,7 @@
                 isNotRainFriendly: false,
                 colors: ['white', 'gray'],
                 lastWorn: new Date().toISOString(),
+                createdAt: "2025-03-12T09:15:00.000Z", // Added Mock Creation Date
                 highlight: "清爽俐落的淺色套裝，上班休閒兩相宜，展現知性美感"
             }
         ];
@@ -692,6 +697,7 @@
                     const created = {
                     ...newOutfit,
                     id: Date.now(),
+                    createdAt: new Date().toISOString(), // Add Created Date for new items
                     };
                     setOutfits([...outfits, created]);
                 }
@@ -805,20 +811,23 @@
                 }
             };
 
-            const handleAIFeedback = async (outfit) => {
-                const effectiveKey = getEffectiveApiKey();
-                if (!effectiveKey) return; 
-
-                // Note: IsGeneratingComment is not used anymore since we removed highlight feature, 
-                // but keeping function structure in case re-added or for other AI features.
-            };
-
             const tempRangeLeft = typeof weatherData.minTemp === 'number' 
                 ? Math.max(0, Math.min(100, ((weatherData.minTemp - 0) / 40) * 100))
                 : 40; 
             const tempRangeRight = typeof weatherData.maxTemp === 'number' 
                 ? Math.max(0, Math.min(100, ((40 - weatherData.maxTemp) / 40) * 100))
                 : 40; 
+            
+            // --- Format Date Helper ---
+            const formatDate = (isoString) => {
+                if (!isoString) return '';
+                const date = new Date(isoString);
+                if (isNaN(date.getTime())) return '';
+                const y = date.getFullYear();
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                return `${y}/${m}/${d} 建立`;
+            };
 
             // -- App Render --
             return (
@@ -940,7 +949,7 @@
                                         </div>
                                     </div>
 
-                                    <h1 className="text-2xl font-bold text-slate-800 mb-5 px-1 tracking-tight">今天穿什麼</h1>
+                                    <h1 className="text-2xl font-semibold text-slate-800 mb-5 px-1 tracking-tight">今天穿什麼</h1>
                                     
                                     {outfits.length === 0 ? (
                                         <EmptyState 
@@ -1112,7 +1121,7 @@
                                 <div className="animate-fade-in">
                                     <div className="flex justify-between items-center mb-6 px-1">
                                         <div className="flex items-baseline gap-2">
-                                            <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">全部穿搭</h2>
+                                            <h2 className="text-2xl font-semibold text-slate-800 tracking-tight">全部穿搭</h2>
                                             <span className="text-sm font-bold text-slate-400">{manageList.length} 件</span>
                                         </div>
                                         <div className="flex items-center gap-2">
@@ -1157,8 +1166,13 @@
                                                             )}
                                                         </p>
 
-                                                        <div className="flex gap-1.5 mt-auto pt-1">
-                                                            {outfit.colors.map(cid => { const c = COLORS.find(x => x.id === cid); return c ? <div key={cid} className="w-2.5 h-2.5 rounded-full border border-slate-200" style={{backgroundColor: c.hex}}></div> : null; })}
+                                                        <div className="flex items-center justify-between mt-auto pt-1">
+                                                            <div className="flex gap-1.5">
+                                                                {outfit.colors.map(cid => { const c = COLORS.find(x => x.id === cid); return c ? <div key={cid} className="w-2.5 h-2.5 rounded-full border border-slate-200" style={{backgroundColor: c.hex}}></div> : null; })}
+                                                            </div>
+                                                            <span className="text-xs text-slate-400 font-medium tracking-wide">
+                                                                {formatDate(outfit.createdAt || outfit.lastWorn)}
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1166,7 +1180,6 @@
                                                 <EmptyState 
                                                     message="找不到符合條件的穿搭" 
                                                     subMessage="試著放寬篩選條件，或是新增更多樣的穿搭組合吧！"
-                                                    // Removed action and buttonText to hide the button
                                                 />
                                             )}
                                         </div>
