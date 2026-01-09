@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>今天穿什麼 (OOTD)</title>
     
     <!-- React & ReactDOM -->
@@ -29,10 +29,9 @@
                     fontFamily: {
                         sans: ['"Noto Sans TC"', 'sans-serif'],
                     },
-                    // 強制覆蓋字體大小設定
                     fontSize: {
-                        'xs': '0.875rem',    // 14px (原為 12px) - 最小字號
-                        'sm': '0.9375rem',   // 15px (原為 14px) -稍微加大以維持層級
+                        'xs': '0.875rem',    // 14px
+                        'sm': '0.9375rem',   // 15px
                         'base': '1rem',      // 16px
                         'lg': '1.125rem',    // 18px
                         'xl': '1.25rem',     // 20px
@@ -40,11 +39,26 @@
                     },
                     animation: {
                         'fade-in': 'fadeIn 0.4s ease-out forwards',
+                        'slide-up': 'slideUp 0.3s ease-out forwards',
+                        'toast-in': 'toastIn 0.3s ease-out forwards',
+                        'toast-out': 'toastOut 0.3s ease-in forwards',
                     },
                     keyframes: {
                         fadeIn: {
                             '0%': { opacity: '0', transform: 'translateY(10px)' },
                             '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(100%)' },
+                            '100%': { transform: 'translateY(0)' },
+                        },
+                        toastIn: {
+                            '0%': { opacity: '0', transform: 'translate(-50%, -20px)' },
+                            '100%': { opacity: '1', transform: 'translate(-50%, 0)' },
+                        },
+                        toastOut: {
+                            '0%': { opacity: '1', transform: 'translate(-50%, 0)' },
+                            '100%': { opacity: '0', transform: 'translate(-50%, -20px)' },
                         }
                     }
                 }
@@ -53,7 +67,7 @@
     </script>
 
     <style>
-        /* Custom Scrollbar Hide Utility */
+        /* 隱藏捲軸但保留捲動功能 */
         .scrollbar-hide::-webkit-scrollbar {
             display: none;
         }
@@ -61,17 +75,26 @@
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
-        /* 全域最小字號保護 */
+        
+        /* 強制全螢幕無捲軸 */
         html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden; /* 禁止 body 捲動 */
             font-size: 16px;
             min-width: 320px;
+            overscroll-behavior: none; /* 防止 iOS 彈性捲動 */
         }
-        /* 確保所有元素預設不小於 14px */
+        #root {
+            height: 100%;
+            width: 100%;
+        }
+        
         * {
             font-size: inherit; 
+            -webkit-tap-highlight-color: transparent;
         }
         .text-xs, .text-sm, .text-base, .text-lg, .text-xl, .text-2xl {
-             /* 讓 Tailwind class 生效，不被 inherit 蓋過 */
              font-size: revert-layer;
         }
     </style>
@@ -110,7 +133,7 @@
             };
         };
 
-        // Initialize Icons used in the app
+        // Initialize Icons
         const Shirt = createLucideIcon('Shirt');
         const Plus = createLucideIcon('Plus');
         const LayoutGrid = createLucideIcon('LayoutGrid');
@@ -136,57 +159,52 @@
         const AlertCircle = createLucideIcon('AlertCircle');
         const Camera = createLucideIcon('Camera');
         const ChevronLeft = createLucideIcon('ChevronLeft');
+        const ChevronRight = createLucideIcon('ChevronRight'); 
         const ThumbsUp = createLucideIcon('ThumbsUp');
         const Star = createLucideIcon('Star');
         const Globe = createLucideIcon('Globe');
         const ChevronDown = createLucideIcon('ChevronDown');
+        const Key = createLucideIcon('Key');
 
 
         // --- Gemini API Configuration ---
-        const apiKey = ""; // API Key 會在執行環境中被注入，或者由使用者輸入
+        const apiKey = ""; 
 
-        // Helper to get API Key (Env -> LocalStorage -> Prompt)
         const getEffectiveApiKey = () => {
             if (apiKey && apiKey.length > 0) return apiKey;
-            
             const stored = localStorage.getItem('gemini_api_key');
-            if (stored) return stored;
-
-            const input = prompt("請輸入您的 Google Gemini API Key 以使用 AI 功能：\n(它將會被暫存在您的瀏覽器中)");
-            if (input) {
-                localStorage.setItem('gemini_api_key', input);
-                return input;
-            }
+            if (stored && stored.trim() !== "") return stored;
+            
+            // Try prompt as fallback if modal isn't enough, but usually modal handles it.
             return null;
         };
 
         // --- Constants & Helpers ---
-        // 擴充台灣所有縣市
         const LOCATIONS = [
-            { country: "台灣", name: "台北市", minTemp: 22, maxTemp: 26, rainProb: 60 },
-            { country: "台灣", name: "新北市", minTemp: 21, maxTemp: 25, rainProb: 55 },
-            { country: "台灣", name: "基隆市", minTemp: 20, maxTemp: 24, rainProb: 80 },
-            { country: "台灣", name: "桃園市", minTemp: 21, maxTemp: 27, rainProb: 40 },
-            { country: "台灣", name: "新竹市", minTemp: 21, maxTemp: 26, rainProb: 30 },
-            { country: "台灣", name: "新竹縣", minTemp: 20, maxTemp: 26, rainProb: 30 },
-            { country: "台灣", name: "苗栗縣", minTemp: 21, maxTemp: 27, rainProb: 25 },
-            { country: "台灣", name: "台中市", minTemp: 24, maxTemp: 30, rainProb: 10 },
-            { country: "台灣", name: "彰化縣", minTemp: 24, maxTemp: 30, rainProb: 15 },
-            { country: "台灣", name: "南投縣", minTemp: 22, maxTemp: 29, rainProb: 20 },
-            { country: "台灣", name: "雲林縣", minTemp: 24, maxTemp: 31, rainProb: 10 },
-            { country: "台灣", name: "嘉義市", minTemp: 24, maxTemp: 31, rainProb: 10 },
-            { country: "台灣", name: "嘉義縣", minTemp: 24, maxTemp: 31, rainProb: 10 },
-            { country: "台灣", name: "台南市", minTemp: 25, maxTemp: 32, rainProb: 5 },
-            { country: "台灣", name: "高雄市", minTemp: 26, maxTemp: 32, rainProb: 5 },
-            { country: "台灣", name: "屏東縣", minTemp: 26, maxTemp: 33, rainProb: 10 },
-            { country: "台灣", name: "宜蘭縣", minTemp: 21, maxTemp: 25, rainProb: 70 },
-            { country: "台灣", name: "花蓮縣", minTemp: 23, maxTemp: 28, rainProb: 40 },
-            { country: "台灣", name: "台東縣", minTemp: 24, maxTemp: 29, rainProb: 30 },
-            { country: "台灣", name: "澎湖縣", minTemp: 24, maxTemp: 28, rainProb: 10 },
-            { country: "台灣", name: "金門縣", minTemp: 22, maxTemp: 27, rainProb: 10 },
-            { country: "台灣", name: "連江縣", minTemp: 19, maxTemp: 23, rainProb: 20 },
-            { country: "日本", name: "東京", minTemp: 15, maxTemp: 20, rainProb: 30 },
-            { country: "韓國", name: "首爾", minTemp: 10, maxTemp: 18, rainProb: 0 },
+            { country: "台灣", name: "台北市", lat: 25.0330, lng: 121.5654 },
+            { country: "台灣", name: "新北市", lat: 25.0169, lng: 121.4627 },
+            { country: "台灣", name: "基隆市", lat: 25.1276, lng: 121.7391 },
+            { country: "台灣", name: "桃園市", lat: 24.9936, lng: 121.3009 },
+            { country: "台灣", name: "新竹市", lat: 24.8138, lng: 120.9674 },
+            { country: "台灣", name: "新竹縣", lat: 24.8396, lng: 121.0177 },
+            { country: "台灣", name: "苗栗縣", lat: 24.5601, lng: 120.8214 },
+            { country: "台灣", name: "台中市", lat: 24.1477, lng: 120.6736 },
+            { country: "台灣", name: "彰化縣", lat: 24.0517, lng: 120.5160 },
+            { country: "台灣", name: "南投縣", lat: 23.9609, lng: 120.9718 },
+            { country: "台灣", name: "雲林縣", lat: 23.7092, lng: 120.4313 },
+            { country: "台灣", name: "嘉義市", lat: 23.4800, lng: 120.4491 },
+            { country: "台灣", name: "嘉義縣", lat: 23.4518, lng: 120.2554 },
+            { country: "台灣", name: "台南市", lat: 22.9997, lng: 120.2270 },
+            { country: "台灣", name: "高雄市", lat: 22.6272, lng: 120.3014 },
+            { country: "台灣", name: "屏東縣", lat: 22.5519, lng: 120.5487 },
+            { country: "台灣", name: "宜蘭縣", lat: 24.7021, lng: 121.7377 },
+            { country: "台灣", name: "花蓮縣", lat: 23.9871, lng: 121.6015 },
+            { country: "台灣", name: "台東縣", lat: 22.7583, lng: 121.1444 },
+            { country: "台灣", name: "澎湖縣", lat: 23.5711, lng: 119.5793 },
+            { country: "台灣", name: "金門縣", lat: 24.3263, lng: 118.3181 },
+            { country: "台灣", name: "連江縣", lat: 26.1552, lng: 119.9298 },
+            { country: "日本", name: "東京", lat: 35.6895, lng: 139.6917 },
+            { country: "韓國", name: "首爾", lat: 37.5665, lng: 126.9780 },
         ];
 
         const SEASONS = [
@@ -223,7 +241,7 @@
                 isNotRainFriendly: true, 
                 colors: ['pink', 'white'], 
                 lastWorn: new Date().toISOString(),
-                highlight: "溫柔粉色針織衫搭簡約下身，展現甜美氣質，約會首選！💕"
+                highlight: "溫柔粉色針織衫搭簡約下身，展現甜美氣質，約會首選！"
             },
             {
                 id: 2,
@@ -232,11 +250,10 @@
                 isNotRainFriendly: false,
                 colors: ['white', 'gray'],
                 lastWorn: new Date().toISOString(),
-                highlight: "清爽俐落的淺色套裝，上班休閒兩相宜，展現知性美感✨"
+                highlight: "清爽俐落的淺色套裝，上班休閒兩相宜，展現知性美感"
             }
         ];
 
-        // Helper to strip markdown code blocks from JSON string
         const cleanJsonString = (str) => {
             if (!str) return "{}";
             return str.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -247,7 +264,6 @@
         const SeasonBadge = ({ seasonId, minimal = false }) => {
             const s = SEASONS.find(x => x.id === seasonId);
             const Icon = s ? s.icon : null;
-            // 替換所有 text-[10px] 為 text-xs (14px)
             return s ? <span className={`inline-flex items-center gap-1 rounded-full font-medium ${s.color} ${minimal ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-xs'}`}>{!minimal && <Icon size={14}/>}{s.label}</span> : null;
         };
 
@@ -306,27 +322,148 @@
             
             // Weather State
             const [locationIndex, setLocationIndex] = useState(0);
-            const weather = LOCATIONS[locationIndex];
             const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+            
+            // Location Modal Logic
+            const [locationModalStep, setLocationModalStep] = useState('country');
+            const [selectedCountry, setSelectedCountry] = useState(null);
+
+            const uniqueCountries = useMemo(() => [...new Set(LOCATIONS.map(l => l.country))], []);
+
+            const handleOpenLocationModal = () => {
+                setLocationModalStep('country');
+                setSelectedCountry(null);
+                setIsLocationModalOpen(true);
+            };
+
+            const handleSelectCountry = (country) => {
+                setSelectedCountry(country);
+                setLocationModalStep('city');
+            };
+
+            const handleSelectCity = (originalIndex) => {
+                setLocationIndex(originalIndex);
+                setIsLocationModalOpen(false);
+            };
+
+            const handleBackToCountry = () => {
+                setLocationModalStep('country');
+                setSelectedCountry(null);
+            };
+
+            const [weatherData, setWeatherData] = useState({
+                minTemp: '--',
+                maxTemp: '--',
+                rainProb: '--',
+                windSpeed: '--',
+                isLoading: true
+            });
+
+            // --- Toast System ---
+            const [toast, setToast] = useState(null);
+            const showToast = (message, type = 'info') => {
+                setToast({ message, type });
+                setTimeout(() => setToast(null), 3000);
+            };
+
+            // --- API Key Management UI ---
+            const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+            const [tempApiKey, setTempApiKey] = useState('');
+
+            // Helper to check key quietly
+            const getStoredApiKey = () => {
+                if (apiKey && apiKey.length > 0) return apiKey;
+                return localStorage.getItem('gemini_api_key');
+            };
+
+            const handleSaveApiKey = () => {
+                if (tempApiKey.trim()) {
+                    localStorage.setItem('gemini_api_key', tempApiKey.trim());
+                    setIsApiKeyModalOpen(false);
+                    showToast("API Key 已儲存，請再次點擊按鈕", "success");
+                } else {
+                    showToast("請輸入有效的 API Key", "error");
+                }
+            };
+
+            // Fetch Weather from Open-Meteo
+            useEffect(() => {
+                const fetchWeather = async () => {
+                    setWeatherData(prev => ({ ...prev, isLoading: true }));
+                    const loc = LOCATIONS[locationIndex];
+                    try {
+                        const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=auto&forecast_days=1`);
+                        
+                        if (!response.ok) throw new Error('Weather API Error');
+                        
+                        const data = await response.json();
+                        const daily = data.daily;
+
+                        setWeatherData({
+                            minTemp: Math.round(daily.temperature_2m_min[0]),
+                            maxTemp: Math.round(daily.temperature_2m_max[0]),
+                            rainProb: daily.precipitation_probability_max[0],
+                            windSpeed: Math.round(daily.wind_speed_10m_max[0]),
+                            isLoading: false
+                        });
+                    } catch (error) {
+                        console.error("Failed to fetch weather:", error);
+                        setWeatherData({
+                            minTemp: 20,
+                            maxTemp: 26,
+                            rainProb: 30,
+                            windSpeed: 10,
+                            isLoading: false
+                        });
+                    }
+                };
+
+                fetchWeather();
+            }, [locationIndex]);
+
+            const currentWeather = {
+                ...LOCATIONS[locationIndex],
+                ...weatherData
+            };
             
             const [selectedOutfitId, setSelectedOutfitId] = useState(null);
             const [viewState, setViewState] = useState('browsing'); 
             
             // Filter States
             const [homeFilterColor, setHomeFilterColor] = useState(null);
-            
             const [showFilters, setShowFilters] = useState(false);
+            
+            // Temporary Filter States for Modal
+            const [tempFilterColor, setTempFilterColor] = useState(null);
+            const [tempFilterSeason, setTempFilterSeason] = useState(null);
+            const [tempFilterRainFriendly, setTempFilterRainFriendly] = useState(false);
+
+            // Active Filter States
             const [manageFilterColor, setManageFilterColor] = useState(null);
             const [manageFilterSeason, setManageFilterSeason] = useState(null);
             const [manageFilterRainFriendly, setManageFilterRainFriendly] = useState(false);
 
-            // Delete Modal State
+            // Initialize temp filters when opening modal
+            useEffect(() => {
+                if (showFilters) {
+                    setTempFilterColor(manageFilterColor);
+                    setTempFilterSeason(manageFilterSeason);
+                    setTempFilterRainFriendly(manageFilterRainFriendly);
+                }
+            }, [showFilters, manageFilterColor, manageFilterSeason, manageFilterRainFriendly]);
+
+            // Apply Filters
+            const applyFilters = () => {
+                setManageFilterColor(tempFilterColor);
+                setManageFilterSeason(tempFilterSeason);
+                setManageFilterRainFriendly(tempFilterRainFriendly);
+                setShowFilters(false);
+            };
+
             const [deleteId, setDeleteId] = useState(null);
 
             // AI States
             const [isAnalyzing, setIsAnalyzing] = useState(false);
-            const [aiFeedback, setAiFeedback] = useState(null); 
-            const [isGeneratingComment, setIsGeneratingComment] = useState(false);
             
             // Form State
             const [newOutfit, setNewOutfit] = useState({
@@ -381,20 +518,6 @@
                 localStorage.setItem('ootd_outfits', JSON.stringify(outfits));
             }, [outfits]);
 
-            // Smart Default for Create Mode
-            useEffect(() => {
-                if (view === 'create' && (!newOutfit.seasons || newOutfit.seasons.length === 0) && !newOutfit.id) {
-                    const currentMonth = new Date().getMonth(); 
-                    let suggestedSeason = '';
-                    if (SEASON_CONFIG.summer.months.includes(currentMonth)) suggestedSeason = 'summer';
-                    else if (SEASON_CONFIG.spring_autumn.months.includes(currentMonth)) suggestedSeason = 'spring_autumn';
-                    else suggestedSeason = 'winter';
-                    if (suggestedSeason) {
-                        setNewOutfit(prev => ({ ...prev, seasons: [suggestedSeason] }));
-                    }
-                }
-            }, [view, newOutfit.id]);
-
             // Navigation Guard
             const handleViewChange = (targetView, resetForm = false) => {
                 if (view !== 'create') {
@@ -417,7 +540,11 @@
 
             // --- Recommendations Logic ---
             const { homeRecommendations, availableColors } = useMemo(() => {
-                const avgTemp = (weather.minTemp + weather.maxTemp) / 2;
+                const safeMinTemp = typeof weatherData.minTemp === 'number' ? weatherData.minTemp : 20;
+                const safeMaxTemp = typeof weatherData.maxTemp === 'number' ? weatherData.maxTemp : 25;
+                const safeRainProb = typeof weatherData.rainProb === 'number' ? weatherData.rainProb : 30;
+
+                const avgTemp = (safeMinTemp + safeMaxTemp) / 2;
                 const currentMonth = new Date().getMonth();
                 const targetSeasons = new Set();
                 
@@ -432,15 +559,13 @@
                 let base = outfits.filter(o => {
                     const seasonMatch = o.seasons && o.seasons.some(s => targetSeasons.has(s));
                     let rainMatch = true;
-                    // Auto rain filter logic (smart recommendation)
-                    if (weather.rainProb > 50) {
+                    if (safeRainProb > 50) {
                         rainMatch = !o.isNotRainFriendly;
                     }
                     return seasonMatch && rainMatch;
                 });
 
-                if (base.length === 0 && weather.rainProb > 50) {
-                    // Relax rain rule if nothing found
+                if (base.length === 0 && safeRainProb > 50) {
                     base = outfits.filter(o => o.seasons && o.seasons.some(s => targetSeasons.has(s)));
                 }
                 if (base.length === 0 && outfits.length > 0) {
@@ -455,11 +580,10 @@
                     final = base.filter(o => o.colors && o.colors.includes(homeFilterColor));
                 }
 
-                // Sort by most recently added
                 final.sort((a, b) => b.id - a.id);
                 
                 return { homeRecommendations: final, availableColors: Array.from(colorsInBase) };
-            }, [outfits, weather, homeFilterColor]); 
+            }, [outfits, weatherData, homeFilterColor]); 
 
             // --- Manage Logic ---
             const manageList = useMemo(() => {
@@ -484,13 +608,11 @@
             // --- Actions ---
 
             const handleSelectOutfit = (id) => {
-                // Selection disabled for pure browsing mode
             };
 
             const confirmSelection = () => {
                 if (!selectedOutfitId) return;
                 setViewState('result');
-                handleAIFeedback(outfits.find(o => o.id === selectedOutfitId));
             };
 
             const resetSelection = () => {
@@ -520,8 +642,14 @@
             };
 
             const handleSave = () => {
-                if (!newOutfit.image) return alert("請上傳圖片");
-                if (!newOutfit.seasons || newOutfit.seasons.length === 0) return alert("請至少選擇一個季節");
+                if (!newOutfit.image) {
+                    showToast("請上傳圖片", "error");
+                    return;
+                }
+                if (!newOutfit.seasons || newOutfit.seasons.length === 0) {
+                    showToast("請至少選擇一個季節", "error");
+                    return;
+                }
 
                 if (newOutfit.id) {
                     const updated = outfits.map(o => o.id === newOutfit.id ? newOutfit : o);
@@ -536,6 +664,7 @@
                 
                 setIsFormDirty(false);
                 setNewOutfit({ id: null, image: "", seasons: [], isNotRainFriendly: false, colors: [], highlight: "" });
+                showToast(newOutfit.id ? "已儲存修改" : "建立成功", "success");
                 setView('manage'); 
             };
 
@@ -548,25 +677,58 @@
                 }
             };
 
-            // --- AI ---
             const handleAIAnalyze = async () => {
-                const effectiveKey = getEffectiveApiKey();
-                if (!effectiveKey) return; // User cancelled prompt
+                const effectiveKey = getStoredApiKey();
+                
+                // 1. Check Key
+                if (!effectiveKey) {
+                    setIsApiKeyModalOpen(true);
+                    return; 
+                }
 
-                if (!newOutfit.image) return alert("請先上傳圖片！");
+                // 2. Check Image
+                if (!newOutfit.image) {
+                    showToast("請先上傳圖片！", "error");
+                    return;
+                }
+
+                // 3. Start Analyze
                 setIsAnalyzing(true);
                 try {
-                    const prompt = `分析圖片: 季節(summer/spring_autumn/winter), 色系(${COLORS.map(c=>c.id).join(',')})。並用繁體中文寫1句簡短的「穿搭亮點」(highlight)，例如：「甜美的粉色系搭配，適合約會！」(15字以內)。回傳JSON格式。`;
+                    const prompt = `分析圖片: 季節(summer/spring_autumn/winter), 色系(${COLORS.map(c=>c.id).join(',')})。請用繁體中文提供一句簡短的穿搭亮點描述(highlight)，語氣時尚專業，不要使用Emoji，20字以內。回傳JSON格式。`;
                     const jsonStr = await generateGeminiContent(effectiveKey, prompt, newOutfit.image, true);
-                    const result = JSON.parse(cleanJsonString(jsonStr)); 
-                    updateNewOutfit({
-                        seasons: result.seasons || newOutfit.seasons,
-                        colors: result.colors || newOutfit.colors,
-                        highlight: result.highlight || ""
-                    });
+                    
+                    try {
+                        const result = JSON.parse(cleanJsonString(jsonStr)); 
+                        
+                        if (!result || (!result.seasons && !result.colors)) {
+                            showToast("AI 無法辨識圖片內容，請重試或手動選擇。", "error");
+                            return;
+                        }
+
+                        updateNewOutfit({
+                            seasons: result.seasons || newOutfit.seasons,
+                            colors: result.colors || newOutfit.colors,
+                            highlight: result.highlight || "" 
+                        });
+                        showToast("AI 分析完成！", "success");
+                    } catch (parseError) {
+                        console.error("JSON Parse Error:", parseError, jsonStr);
+                        showToast("AI 回傳格式錯誤，請重試", "error");
+                    }
                 } catch (e) {
                     console.error("AI Analyze Error:", e);
-                    alert("AI 分析失敗，請檢查 API Key 或網路連線");
+                    const errStr = (e.message || e.toString()).toLowerCase();
+                    // Check for common API key error keywords
+                    if (errStr.includes("api key") || errStr.includes("leaked") || errStr.includes("key expired") || errStr.includes("403") || errStr.includes("400")) {
+                        console.warn("API Key Error detected, clearing storage:", e.message);
+                        localStorage.removeItem('gemini_api_key'); // Force clear
+                        setTempApiKey(''); // Clear state
+                        setIsApiKeyModalOpen(true); // Force modal open
+                        showToast("API Key 無效或已失效，請重新輸入", "error");
+                    } else {
+                        showToast("AI 連線失敗，請檢查網路", "error");
+                    }
                 } finally {
                     setIsAnalyzing(false);
                 }
@@ -574,19 +736,35 @@
 
             const generateGeminiContent = async (key, prompt, imageBase64 = null, returnJson = false) => {
                 try {
+                    let inlineDataPart = null;
+                    if (imageBase64 && imageBase64.includes(',')) {
+                        const [meta, data] = imageBase64.split(',');
+                        // Extract mime type from "data:image/png;base64" or default to jpeg
+                        const mimeType = meta.match(/:(.*?);/)?.[1] || "image/jpeg";
+                        inlineDataPart = { inlineData: { mimeType: mimeType, data: data } };
+                    }
+
+                    const parts = [{ text: prompt }];
+                    if (inlineDataPart) parts.push(inlineDataPart);
+
                     const payload = {
-                        contents: [{ parts: [{ text: prompt }, ...(imageBase64 && imageBase64.includes(',') ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64.split(',')[1] } }] : [])] }]
+                        contents: [{ role: "user", parts: parts }]
                     };
+                    
                     if (returnJson) {
                         if (prompt.includes("分析圖片")) {
                             payload.generationConfig = { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { seasons: { type: "ARRAY", items: { type: "STRING", enum: ["summer", "spring_autumn", "winter"] } }, colors: { type: "ARRAY", items: { type: "STRING", enum: COLORS.map(c => c.id) } }, highlight: { type: "STRING" } } } };
-                        } else {
-                            payload.generationConfig = { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { compliment: { type: "STRING" }, highlight: { type: "STRING" } } } };
                         }
                     }
+                    
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     const data = await response.json();
-                    if (!response.ok) throw new Error(data.error?.message || "API Request Failed");
+                    
+                    if (!response.ok) {
+                        const errorMsg = data.error?.message || "API Request Failed";
+                        throw new Error(errorMsg);
+                    }
+                    
                     return data.candidates[0].content.parts[0].text;
                 } catch (error) {
                     console.error(error); throw error;
@@ -597,423 +775,511 @@
                 const effectiveKey = getEffectiveApiKey();
                 if (!effectiveKey) return; 
 
-                setIsGeneratingComment(true);
-                try {
-                    const prompt = `
-                    現在${weather.name}天氣${weather.minTemp}-${weather.maxTemp}度，降雨機率${weather.rainProb}%。
-                    這套衣服包含：${outfit.seasons.join(',')}季, 顏色:${outfit.colors.join(',')}。
-                    請針對這套穿搭進行點評，回傳 JSON 格式：
-                    { 
-                        "compliment": "一句充滿熱情、情緒價值的誇獎(30-50字)", 
-                        "highlight": "這套穿搭的一個具體亮點或特色分析(30字)" 
-                    }。
-                    請用繁體中文，語氣極度正面、鼓勵，加上emoji。
-                    `;
-                    const jsonStr = await generateGeminiContent(effectiveKey, prompt, null, true);
-                    const result = JSON.parse(cleanJsonString(jsonStr)); 
-                    setAiFeedback(result);
-                } catch (e) {
-                    console.error("AI Feedback Error:", e);
-                    setAiFeedback({ compliment: "這套穿搭太棒了，簡直是為你量身打造的！", highlight: "自信就是你最好的時尚單品！" });
-                } finally {
-                    setIsGeneratingComment(false);
-                }
+                // Note: IsGeneratingComment is not used anymore since we removed highlight feature, 
+                // but keeping function structure in case re-added or for other AI features.
             };
 
-            // Dynamic visual stats logic for gradient bars
-            const tempRangeLeft = Math.max(0, Math.min(100, ((weather.minTemp - 0) / 40) * 100));
-            const tempRangeRight = Math.max(0, Math.min(100, ((40 - weather.maxTemp) / 40) * 100));
+            const tempRangeLeft = typeof weatherData.minTemp === 'number' 
+                ? Math.max(0, Math.min(100, ((weatherData.minTemp - 0) / 40) * 100))
+                : 40; 
+            const tempRangeRight = typeof weatherData.maxTemp === 'number' 
+                ? Math.max(0, Math.min(100, ((40 - weatherData.maxTemp) / 40) * 100))
+                : 40; 
 
+            // -- App Render --
             return (
-                <div className="min-h-screen bg-[#F8FAFC] text-slate-700 font-sans pb-28 md:pb-10 relative overflow-hidden">
-                    {/* Cool Toned Background Blobs */}
-                    <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-cyan-100/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply"></div>
-                    <div className="fixed bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-blue-100/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply"></div>
-                    <div className="fixed top-[40%] right-[30%] w-[300px] h-[300px] bg-slate-100/50 rounded-full blur-[80px] pointer-events-none"></div>
+                <div className="h-full bg-[#F8FAFC] text-slate-700 font-sans flex flex-col relative overflow-hidden">
+                    {/* Background Blobs (Fixed position inside main container) */}
+                    <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-cyan-100/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply z-0"></div>
+                    <div className="fixed bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-blue-100/40 rounded-full blur-[100px] pointer-events-none mix-blend-multiply z-0"></div>
+                    <div className="fixed top-[40%] right-[30%] w-[300px] h-[300px] bg-slate-100/50 rounded-full blur-[80px] pointer-events-none z-0"></div>
 
-                    <div className="max-w-3xl mx-auto px-4 py-6 relative z-10">
-                        <div className="flex justify-between items-center mb-4 md:mb-6">
-                            <div className="hidden md:flex text-2xl font-extrabold text-slate-800 tracking-tight items-center gap-2">
-                                <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center text-white">
-                                    <Heart size={18} fill="white"/>
-                                </div>
-                                今天穿什麼
-                            </div>
-                            <div className="hidden md:block">
-                                <TabBarDesktop view={view} onViewChange={handleViewChange} />
+                    {/* Toast Notification */}
+                    {toast && (
+                        <div className="fixed top-12 left-1/2 transform -translate-x-1/2 z-[100] animate-toast-in">
+                            <div className={`px-6 py-3 rounded-full shadow-xl flex items-center gap-2 text-sm font-bold text-white ${toast.type === 'error' ? 'bg-red-500' : 'bg-slate-800'}`}>
+                                {toast.type === 'error' ? <AlertCircle size={16}/> : <Check size={16}/>}
+                                {toast.message}
                             </div>
                         </div>
+                    )}
 
-                        {view === 'home' && (
-                            <div className="animate-fade-in">
-                                {/* Weather Bar (Compact Card Style) */}
-                                <div className="mb-6 p-4 rounded-3xl bg-white shadow-sm border border-slate-100 flex items-center justify-between gap-4 relative overflow-hidden">
-                                    <div className="relative z-10 flex items-center gap-4 w-full">
-                                        {/* Icon Box */}
-                                        <div className="w-12 h-12 rounded-2xl bg-cyan-50 flex items-center justify-center text-cyan-600 shrink-0">
-                                            {weather.rainProb > 50 ? <CloudRain size={24}/> : <Sun size={24}/>}
-                                        </div>
-                                        
-                                        {/* Info */}
-                                        <div className="flex-1">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <button 
-                                                    onClick={() => setIsLocationModalOpen(true)}
-                                                    className="flex items-center gap-1 group rounded-lg hover:bg-slate-50 p-1 -ml-1 transition-colors"
-                                                >
-                                                    <h2 className="text-slate-800 font-bold text-lg tracking-tight">{weather.name}</h2>
-                                                    <ChevronDown size={16} className="text-slate-400 group-hover:text-slate-600"/>
-                                                </button>
+                    {/* API Key Modal */}
+                    {isApiKeyModalOpen && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-in">
+                            <div className="bg-white rounded-[2rem] p-6 shadow-2xl max-w-sm w-full">
+                                <h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                    <Key size={20} className="text-cyan-500"/>
+                                    設定 Gemini API Key
+                                </h3>
+                                <p className="text-sm text-slate-500 mb-4">請輸入您的 Google Gemini API Key 以啟用 AI 自動辨識功能。金鑰將僅儲存於您的瀏覽器中。</p>
+                                <input 
+                                    type="text" 
+                                    value={tempApiKey}
+                                    onChange={(e) => setTempApiKey(e.target.value)}
+                                    placeholder="貼上您的 API Key"
+                                    className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 focus:border-cyan-500 focus:outline-none mb-4 text-sm font-mono"
+                                />
+                                <div className="flex gap-3">
+                                    <button onClick={() => setIsApiKeyModalOpen(false)} className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm">取消</button>
+                                    <button onClick={handleSaveApiKey} className="flex-1 py-3 rounded-xl bg-cyan-500 text-white font-bold text-sm shadow-lg shadow-cyan-200">儲存</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Main Content Area - Scrollable */}
+                    <div className="flex-1 overflow-y-auto scrollbar-hide pb-28 md:pb-10 z-10">
+                        <div className="max-w-3xl mx-auto px-4 py-6">
+                            <div className="flex justify-between items-center mb-4 md:mb-6">
+                                <div className="hidden md:flex text-2xl font-extrabold text-slate-800 tracking-tight items-center gap-2">
+                                    <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center text-white">
+                                        <Heart size={18} fill="white"/>
+                                    </div>
+                                    今天穿什麼
+                                </div>
+                                <div className="hidden md:block">
+                                    <TabBarDesktop view={view} onViewChange={handleViewChange} />
+                                </div>
+                            </div>
+
+                            {view === 'home' && (
+                                <div className="animate-fade-in">
+                                    {/* Weather Bar */}
+                                    <div className="mb-6 p-4 rounded-3xl bg-white shadow-sm border border-slate-100 flex items-center justify-between gap-4 relative overflow-hidden">
+                                        <div className="relative z-10 flex items-center gap-4 w-full">
+                                            {/* Icon Box */}
+                                            <div className="w-12 h-12 rounded-2xl bg-cyan-50 flex items-center justify-center text-cyan-600 shrink-0">
+                                                {weatherData.isLoading ? (
+                                                    <Loader2 size={24} className="animate-spin text-slate-300" />
+                                                ) : (
+                                                    (typeof weatherData.rainProb === 'number' && weatherData.rainProb > 50) ? <CloudRain size={24}/> : <Sun size={24}/>
+                                                )}
                                             </div>
                                             
-                                            <div className="flex items-center gap-3 w-full">
-                                                {/* Temp Bar */}
-                                                <div className="flex items-center gap-2 flex-1">
-                                                    {/* Changed text-[10px] to text-xs (14px) */}
-                                                    <span className="text-xs font-bold text-slate-400 w-6">{weather.minTemp}°</span>
-                                                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden relative">
-                                                        <div 
-                                                            className="absolute top-0 bottom-0 bg-gradient-to-r from-cyan-300 to-blue-400 rounded-full" 
-                                                            style={{left: `${tempRangeLeft}%`, right: `${tempRangeRight}%`}}
-                                                        ></div>
-                                                    </div>
-                                                    {/* Changed text-[10px] to text-xs (14px) */}
-                                                    <span className="text-xs font-bold text-slate-600 w-6 text-right">{weather.maxTemp}°</span>
+                                            {/* Info */}
+                                            <div className="flex-1">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <button 
+                                                        onClick={handleOpenLocationModal}
+                                                        className="flex items-center gap-1 group rounded-lg hover:bg-slate-50 p-1 -ml-1 transition-colors"
+                                                    >
+                                                        <h2 className="text-slate-800 font-bold text-lg tracking-tight">{currentWeather.name}</h2>
+                                                        <ChevronDown size={16} className="text-slate-400 group-hover:text-slate-600"/>
+                                                    </button>
                                                 </div>
                                                 
-                                                {/* Rain Bar */}
-                                                <div className="flex items-center gap-1 w-12 justify-end">
-                                                    <Droplets size={10} className="text-cyan-500 fill-current"/>
-                                                    {/* Changed text-[10px] to text-xs (14px) */}
-                                                    <span className="text-xs font-bold text-cyan-600">{weather.rainProb}%</span>
+                                                <div className="flex items-center gap-3 w-full">
+                                                    {/* Temp Bar */}
+                                                    <div className="flex items-center gap-2 flex-1">
+                                                        <span className="text-xs font-bold text-slate-400 w-6">
+                                                            {weatherData.isLoading ? '-' : weatherData.minTemp}°
+                                                        </span>
+                                                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden relative">
+                                                            <div 
+                                                                className="absolute top-0 bottom-0 bg-gradient-to-r from-cyan-300 to-blue-400 rounded-full transition-all duration-1000" 
+                                                                style={{left: `${tempRangeLeft}%`, right: `${tempRangeRight}%`}}
+                                                            ></div>
+                                                        </div>
+                                                        <span className="text-xs font-bold text-slate-600 w-6 text-right">
+                                                            {weatherData.isLoading ? '-' : weatherData.maxTemp}°
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {/* Rain Bar */}
+                                                    <div className="flex items-center gap-1">
+                                                        <Droplets size={10} className="text-cyan-500 fill-current"/>
+                                                        <span className="text-xs font-bold text-cyan-600">
+                                                            {weatherData.isLoading ? '-' : weatherData.rainProb}%
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Wind Bar */}
+                                                    <div className="flex items-center gap-1">
+                                                        <Wind size={10} className="text-slate-400 fill-current"/>
+                                                        <span className="text-xs font-bold text-slate-500">
+                                                            {weatherData.isLoading ? '-' : weatherData.windSpeed}<span className="text-[10px] ml-0.5">km/h</span>
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                <h1 className="text-2xl font-bold text-slate-800 mb-5 px-1 tracking-tight">今天穿什麼</h1>
-                                
-                                {outfits.length === 0 ? (
-                                    <EmptyState 
-                                        message="衣櫃空空如也" 
-                                        subMessage="快去新增你的第一套穿搭，讓 AI 幫你決定明天穿什麼吧！"
-                                        action={() => handleViewChange('create', true)}
-                                    />
-                                ) : (
-                                    <>
-                                        {/* Filter Bar */}
-                                        <div className="mb-6 space-y-3">
-                                            <div className="overflow-x-auto pb-2 scrollbar-hide">
-                                                <div className="flex gap-2 px-1">
-                                                    <button onClick={() => setHomeFilterColor(null)} className={`flex-shrink-0 px-5 py-2.5 rounded-full text-xs font-bold transition-all border ${!homeFilterColor ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200'}`}>全部</button>
-                                                    {COLORS.filter(c => availableColors.includes(c.id)).map(c => (
-                                                        <button key={c.id} onClick={() => setHomeFilterColor(homeFilterColor === c.id ? null : c.id)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full border transition-all ${homeFilterColor === c.id ? 'bg-white ring-2 ring-cyan-500 border-transparent shadow-md' : 'bg-white border-slate-200 shadow-sm hover:bg-slate-50'}`}>
-                                                                <div className="w-3 h-3 rounded-full border border-slate-100" style={{backgroundColor: c.hex}}></div>
-                                                                <span className={`text-xs ${homeFilterColor === c.id ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{c.label}</span>
+                                    <h1 className="text-2xl font-bold text-slate-800 mb-5 px-1 tracking-tight">今天穿什麼</h1>
+                                    
+                                    {outfits.length === 0 ? (
+                                        <EmptyState 
+                                            message="衣櫃空空如也" 
+                                            subMessage="快去新增你的第一套穿搭，讓 AI 幫你決定明天穿什麼吧！"
+                                            action={() => handleViewChange('create', true)}
+                                        />
+                                    ) : (
+                                        <>
+                                            {/* Filter Bar */}
+                                            <div className="mb-6 space-y-3">
+                                                <div className="overflow-x-auto pb-2 scrollbar-hide">
+                                                    <div className="flex gap-2 px-1">
+                                                        <button onClick={() => setHomeFilterColor(null)} className={`flex-shrink-0 px-5 py-2.5 rounded-full text-xs font-bold transition-all border ${!homeFilterColor ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200'}`}>全部</button>
+                                                        {COLORS.filter(c => availableColors.includes(c.id)).map(c => (
+                                                            <button key={c.id} onClick={() => setHomeFilterColor(homeFilterColor === c.id ? null : c.id)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full border transition-all ${homeFilterColor === c.id ? 'bg-white ring-2 ring-cyan-500 border-transparent shadow-md' : 'bg-white border-slate-200 shadow-sm hover:bg-slate-50'}`}>
+                                                                    <div className="w-3 h-3 rounded-full border border-slate-100" style={{backgroundColor: c.hex}}></div>
+                                                                    <span className={`text-xs ${homeFilterColor === c.id ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{c.label}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Grid */}
+                                            {homeRecommendations.length > 0 ? (
+                                                <div className="grid grid-cols-2 gap-4 mb-32 md:mb-24 px-1">
+                                                {homeRecommendations.map((outfit) => {
+                                                    const isSelected = selectedOutfitId === outfit.id;
+                                                    return (
+                                                    <div key={outfit.id} onClick={() => handleSelectOutfit(outfit.id)} className={`relative group rounded-3xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 border bg-white ${isSelected ? 'border-cyan-400 ring-4 ring-cyan-50' : 'border-white'}`}>
+                                                        <div className="aspect-[3/4] bg-slate-100 relative">
+                                                            <img src={outfit.image} alt="Outfit" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                                            
+                                                            {/* Rain Indicator Overlay */}
+                                                            {outfit.isNotRainFriendly && (
+                                                                <div className="absolute top-3 right-3">
+                                                                    <span className="bg-white/90 backdrop-blur-md text-slate-400 text-xs w-8 h-8 flex items-center justify-center rounded-full shadow-sm" title="不宜雨天">
+                                                                        <Umbrella size={16} className="line-through"/>
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    )
+                                                })}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-24 bg-white/50 rounded-3xl border border-slate-200 border-dashed mx-1">
+                                                    <p className="text-slate-500 text-sm font-medium">沒有符合條件的穿搭</p>
+                                                    {homeFilterColor && <p className="text-xs text-slate-400 mt-2">試著取消顏色篩選？</p>}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {view === 'create' && (
+                                <div className="animate-fade-in max-w-lg mx-auto bg-white shadow-xl shadow-slate-200/50 border border-slate-100 p-6 md:p-8 rounded-[2.5rem]">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                            {newOutfit.id ? '編輯穿搭' : '新增穿搭'}
+                                            {isAnalyzing && <span className="text-xs font-normal text-cyan-600 bg-cyan-50 px-2 py-1 rounded-full animate-pulse flex items-center gap-1"><Loader2 size={12} className="animate-spin"/> AI</span>}
+                                        </h2>
+                                        <div className="flex gap-2">
+                                            <button onClick={handleCancelCreate} className="text-xs font-bold text-slate-400 hover:text-slate-600 bg-slate-50 px-4 py-2 rounded-full transition-colors">
+                                                取消
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="space-y-6">
+                                        {/* 1. Image Upload */}
+                                        <div className="flex flex-col gap-4">
+                                            <div className="w-full aspect-square bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center relative overflow-hidden group hover:border-cyan-300 transition-colors">
+                                                {newOutfit.image ? (
+                                                    <img src={newOutfit.image} className="w-full h-full object-cover" alt="Preview"/>
+                                                ) : (
+                                                    <div className="text-center p-6 text-slate-400">
+                                                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-slate-300 group-hover:text-cyan-400 group-hover:scale-110 transition-all">
+                                                            <Camera size={32}/>
+                                                        </div>
+                                                        <p className="text-xs font-bold tracking-wide">點擊上傳照片</p>
+                                                    </div>
+                                                )}
+                                                <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                                {newOutfit.image && (
+                                                    <button onClick={(e) => {e.stopPropagation(); updateNewOutfit({image: ''})}} className="absolute top-4 right-4 bg-white/90 p-2.5 rounded-full shadow-md text-slate-400 hover:text-red-500 hover:bg-white transition-all"><Trash2 size={18}/></button>
+                                                )}
+                                            </div>
+                                            
+                                            {/* AI Button */}
+                                            <button 
+                                                onClick={handleAIAnalyze} 
+                                                className={`w-full py-4 rounded-2xl text-sm font-bold transition-all flex items-center justify-center gap-2 
+                                                    ${isAnalyzing 
+                                                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                                                        : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-200/50 active:scale-95'
+                                                    }`}
+                                                disabled={isAnalyzing}
+                                            >
+                                                {isAnalyzing ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18}/>} 
+                                                <span>AI 自動辨識</span>
+                                            </button>
+                                        </div>
+                                        
+                                        {/* 2. Compact Selectors */}
+                                        <div className="space-y-6">
+                                            <div>
+                                                <label className="text-xs font-extrabold text-slate-400 mb-3 block uppercase tracking-wider pl-1">適合季節</label>
+                                                <div className="flex gap-2">
+                                                    {SEASONS.map(s => {
+                                                        const isSelected = newOutfit.seasons && newOutfit.seasons.includes(s.id);
+                                                        const Icon = s.icon;
+                                                        return (
+                                                            <button key={s.id} onClick={() => toggleSeason(s.id)} className={`flex-1 flex flex-row items-center justify-center gap-2 py-3 rounded-2xl text-xs font-bold border-2 transition-all ${isSelected ? `${s.color} border-current/20 shadow-sm` : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}>
+                                                                <Icon size={18} /> {s.label}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-extrabold text-slate-400 mb-3 block uppercase tracking-wider pl-1">主要色系</label>
+                                                <div className="flex flex-wrap gap-2.5">
+                                                    {COLORS.map(c => {
+                                                        const isSelected = newOutfit.colors && newOutfit.colors.includes(c.id);
+                                                        return (
+                                                            <button key={c.id} onClick={() => toggleColor(c.id)} className={`w-9 h-9 rounded-full border-2 transition-all flex items-center justify-center ${isSelected ? 'scale-110 ring-2 ring-cyan-400 border-white shadow-md' : 'opacity-80 hover:opacity-100 hover:scale-105'} ${c.id === 'white' && !isSelected ? 'border-slate-200' : 'border-transparent'}`} style={{backgroundColor: c.hex}} title={c.label}>
+                                                                {isSelected && <Check size={14} className={c.id === 'white' ? 'text-black' : 'text-white'} strokeWidth={3} />}
+                                                            </button>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 3. Rain Toggle */}
+                                        <button 
+                                            onClick={() => updateNewOutfit({ isNotRainFriendly: !newOutfit.isNotRainFriendly })}
+                                            className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${newOutfit.isNotRainFriendly ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className={`p-3 rounded-full ${newOutfit.isNotRainFriendly ? 'bg-red-200 text-red-600' : 'bg-slate-100 text-slate-400'}`}>
+                                                    <CloudRain size={20}/>
+                                                </div>
+                                                <div className="text-left">
+                                                    <span className={`text-sm font-bold block ${newOutfit.isNotRainFriendly ? 'text-red-700' : 'text-slate-600'}`}>下雨天不穿</span>
+                                                    <span className="text-xs text-slate-400 font-medium">若材質怕水或易髒請勾選</span>
+                                                </div>
+                                            </div>
+                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${newOutfit.isNotRainFriendly ? 'bg-red-500 border-red-500' : 'border-slate-300 bg-white'}`}>
+                                                {newOutfit.isNotRainFriendly && <Check size={14} className="text-white"/>}
+                                            </div>
+                                        </button>
+
+                                        {/* Action Buttons */}
+                                        <div className="flex gap-3 pt-4">
+                                            <button onClick={handleCancelCreate} className="flex-1 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all text-sm flex items-center justify-center gap-2">
+                                                取消
+                                            </button>
+                                            <button 
+                                                onClick={handleSave} 
+                                                disabled={!newOutfit.image}
+                                                className={`flex-[2] py-4 rounded-2xl shadow-xl transition-all active:scale-95 text-sm flex items-center justify-center gap-2 font-bold ${!newOutfit.image ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-slate-900 hover:bg-black text-white shadow-slate-200'}`}
+                                            >
+                                                {newOutfit.id ? '儲存修改' : '建立穿搭'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {view === 'manage' && (
+                                <div className="animate-fade-in">
+                                    <div className="flex justify-between items-end mb-6 px-1">
+                                        <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">全部穿搭</h2>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setShowFilters(!showFilters)} className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${showFilters || activeFilterCount > 0 ? 'bg-cyan-500 text-white shadow-md shadow-cyan-200' : 'bg-white text-slate-400 shadow-sm border border-slate-100'}`}>
+                                                <Filter size={18}/>
+                                            </button>
+                                            <span className="text-slate-500 text-xs font-bold bg-white px-3 py-2.5 rounded-full shadow-sm border border-slate-100">{manageList.length} 件</span>
+                                        </div>
+                                    </div>
+
+                                    {/* LIST RENDERING RESTORED HERE */}
+                                    {outfits.length === 0 ? (
+                                        <EmptyState 
+                                            message="還沒有任何衣物" 
+                                            subMessage="開始整理你的衣櫃，讓生活更有條理！"
+                                            action={() => handleViewChange('create', true)}
+                                        />
+                                    ) : (
+                                        <div className="flex flex-col gap-4 pb-20">
+                                            {manageList.length > 0 ? manageList.map(outfit => (
+                                                <div key={outfit.id} className="flex bg-white rounded-[1.5rem] p-3 pr-4 border border-white shadow-sm items-start gap-4 hover:shadow-md transition-shadow">
+                                                    <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gray-50 flex-shrink-0">
+                                                        <img src={outfit.image} className="w-full h-full object-cover" alt="Outfit"/>
+                                                    </div>
+                                                    <div className="flex-1 min-w-0 flex flex-col gap-2 py-1">
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {outfit.seasons.map(sid => <SeasonBadge key={sid} seasonId={sid} minimal />)}
+                                                                {outfit.isNotRainFriendly && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold bg-red-50 text-red-500 border border-red-100"><Umbrella size={10} className="line-through"/> 怕水</span>}
+                                                            </div>
+                                                            <div className="flex gap-1 -mr-1">
+                                                                <button onClick={(e) => handleEdit(outfit, e)} className="p-2 rounded-full text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"><Pencil size={16}/></button>
+                                                                <button onClick={() => setDeleteId(outfit.id)} className="p-2 rounded-full text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={16}/></button>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <p className="text-xs text-slate-600 leading-relaxed font-medium bg-slate-50 p-2.5 rounded-xl">
+                                                            {outfit.highlight ? (
+                                                                <>
+                                                                    <span className="mr-1 text-base">💡</span>{outfit.highlight}
+                                                                </>
+                                                            ) : (
+                                                                <span className="text-slate-400 italic">暫無亮點描述</span>
+                                                            )}
+                                                        </p>
+
+                                                        <div className="flex gap-1.5 mt-auto pt-1">
+                                                            {outfit.colors.map(cid => { const c = COLORS.find(x => x.id === cid); return c ? <div key={cid} className="w-2.5 h-2.5 rounded-full border border-slate-200" style={{backgroundColor: c.hex}}></div> : null; })}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )) : (
+                                                <div className="text-center py-16 bg-white/50 rounded-[2rem] border-2 border-white border-dashed">
+                                                    <div className="text-4xl mb-2">🧐</div>
+                                                    <div className="text-slate-500 font-bold">找不到符合條件的衣物</div>
+                                                    <div className="text-xs text-slate-400 mt-1">試著放寬篩選條件看看？</div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Custom Delete Modal */}
+                                    {deleteId && (
+                                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-fade-in">
+                                            <div className="bg-white rounded-[2rem] p-6 shadow-2xl max-w-xs w-full border border-white/50">
+                                                <div className="flex flex-col items-center gap-4 text-center">
+                                                    <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center text-red-500 mb-1">
+                                                        <AlertCircle size={28}/>
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-xl font-bold text-slate-800">確定要刪除嗎？</h3>
+                                                        <p className="text-sm text-slate-500 mt-2 leading-relaxed">這件穿搭將會從你的衣櫃中永久消失，無法復原喔！</p>
+                                                    </div>
+                                                    <div className="flex gap-3 w-full mt-4">
+                                                        <button onClick={() => setDeleteId(null)} className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm">取消</button>
+                                                        <button onClick={confirmDelete} className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-200 text-sm">刪除</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Filters (Bottom Sheet) - MOVED TO ROOT LEVEL */}
+                            {showFilters && (
+                                <>
+                                    <div 
+                                        className="fixed inset-0 z-[60] bg-slate-900/20 backdrop-blur-sm transition-opacity"
+                                        onClick={() => setShowFilters(false)}
+                                    ></div>
+                                    
+                                    <div className="fixed bottom-0 left-0 right-0 z-[70] bg-white rounded-t-[2rem] p-6 shadow-2xl animate-slide-up border-t border-slate-100 max-h-[85vh] flex flex-col">
+                                        <div className="flex justify-between items-center mb-6 flex-shrink-0">
+                                            <h3 className="font-bold text-slate-800 text-lg">篩選條件</h3>
+                                            <button onClick={() => setShowFilters(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
+                                        </div>
+                                        
+                                        <div className="space-y-6 overflow-y-auto flex-1 pb-4">
+                                            {/* Filter Options */}
+                                            <div>
+                                                <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">季節</span>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => setTempFilterSeason(null)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${!tempFilterSeason ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-100'}`}>全部</button>
+                                                    {SEASONS.map(s => (
+                                                        <button key={s.id} onClick={() => setTempFilterSeason(tempFilterSeason === s.id ? null : s.id)} className={`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors ${tempFilterSeason === s.id ? s.color : 'bg-white text-slate-400 border-slate-100'}`}>
+                                                            {s.label}
                                                         </button>
                                                     ))}
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        {/* Grid - Clean Image Only Cards - NO SELECTION INTERACTION */}
-                                        {homeRecommendations.length > 0 ? (
-                                            <div className="grid grid-cols-2 gap-4 mb-32 md:mb-24 px-1">
-                                            {homeRecommendations.map((outfit) => {
-                                                const isSelected = selectedOutfitId === outfit.id;
-                                                return (
-                                                <div key={outfit.id} onClick={() => handleSelectOutfit(outfit.id)} className={`relative group rounded-3xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 border bg-white ${isSelected ? 'border-cyan-400 ring-4 ring-cyan-50' : 'border-white'}`}>
-                                                    <div className="aspect-[3/4] bg-slate-100 relative">
-                                                        <img src={outfit.image} alt="Outfit" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                                                        
-                                                        {/* Rain Indicator Overlay */}
-                                                        {outfit.isNotRainFriendly && (
-                                                            <div className="absolute top-3 right-3">
-                                                                <span className="bg-white/90 backdrop-blur-md text-slate-400 text-xs w-8 h-8 flex items-center justify-center rounded-full shadow-sm" title="不宜雨天">
-                                                                    <Umbrella size={16} className="line-through"/>
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                            <div>
+                                                <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">顏色</span>
+                                                <div className="flex flex-wrap gap-2">
+                                                    <button onClick={() => setTempFilterColor(null)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${!tempFilterColor ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>全部</button>
+                                                    {COLORS.map(c => (
+                                                        <button key={c.id} onClick={() => setTempFilterColor(tempFilterColor === c.id ? null : c.id)} className={`w-8 h-8 rounded-full border flex items-center justify-center transition-transform ${tempFilterColor === c.id ? 'ring-2 ring-cyan-400 scale-110' : 'opacity-80'} ${c.id === 'white' && tempFilterColor !== c.id ? 'border-slate-200' : ''}`} style={{backgroundColor: c.hex}}>
+                                                            {tempFilterColor === c.id && <Check size={12} className={c.id === 'white' ? 'text-black' : 'text-white'}/>}
+                                                        </button>
+                                                    ))}
                                                 </div>
-                                                )
-                                            })}
                                             </div>
-                                        ) : (
-                                            <div className="text-center py-24 bg-white/50 rounded-3xl border border-slate-200 border-dashed mx-1">
-                                                <p className="text-slate-500 text-sm font-medium">沒有符合條件的穿搭</p>
-                                                {homeFilterColor && <p className="text-xs text-slate-400 mt-2">試著取消顏色篩選？</p>}
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        )}
-
-                        {view === 'create' && (
-                            <div className="animate-fade-in max-w-lg mx-auto bg-white shadow-xl shadow-slate-200/50 border border-slate-100 p-6 md:p-8 rounded-[2.5rem]">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                        {newOutfit.id ? '編輯穿搭' : '新增穿搭'}
-                                        {isAnalyzing && <span className="text-xs font-normal text-cyan-600 bg-cyan-50 px-2 py-1 rounded-full animate-pulse flex items-center gap-1"><Loader2 size={12} className="animate-spin"/> AI</span>}
-                                    </h2>
-                                    <div className="flex gap-2">
-                                        <button onClick={handleCancelCreate} className="text-xs font-bold text-slate-400 hover:text-slate-600 bg-slate-50 px-4 py-2 rounded-full transition-colors">
-                                            取消
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <div className="space-y-6">
-                                    {/* 1. Image Upload & AI Button Container */}
-                                    <div className="flex flex-col gap-4">
-                                        {/* Square Image Box */}
-                                        <div className="w-full aspect-square bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center relative overflow-hidden group hover:border-cyan-300 transition-colors">
-                                            {newOutfit.image ? (
-                                                <img src={newOutfit.image} className="w-full h-full object-cover" alt="Preview"/>
-                                            ) : (
-                                                <div className="text-center p-6 text-slate-400">
-                                                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-slate-300 group-hover:text-cyan-400 group-hover:scale-110 transition-all">
-                                                        <Camera size={32}/>
-                                                    </div>
-                                                    <p className="text-xs font-bold tracking-wide">點擊上傳照片</p>
+                                            <div>
+                                                <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">特殊條件</span>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => setTempFilterRainFriendly(!tempFilterRainFriendly)} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${tempFilterRainFriendly ? 'bg-blue-100 text-blue-600 border-blue-200' : 'bg-white text-slate-400 border-slate-100'}`}>
+                                                        <Umbrella size={14}/> 雨天OK
+                                                    </button>
                                                 </div>
-                                            )}
-                                            <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                                            {newOutfit.image && (
-                                                <button onClick={(e) => {e.stopPropagation(); updateNewOutfit({image: ''})}} className="absolute top-4 right-4 bg-white/90 p-2.5 rounded-full shadow-md text-slate-400 hover:text-red-500 hover:bg-white transition-all"><Trash2 size={18}/></button>
-                                            )}
+                                            </div>
                                         </div>
                                         
-                                        {/* AI Button Below Image */}
-                                        <button 
-                                            onClick={handleAIAnalyze} 
-                                            disabled={!newOutfit.image || isAnalyzing} 
-                                            className={`w-full py-4 rounded-2xl text-sm font-bold transition-all flex items-center justify-center gap-2 
-                                                ${!newOutfit.image 
-                                                    ? 'bg-slate-100 text-slate-300 cursor-not-allowed' 
-                                                    : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-200/50 active:scale-95'
-                                                }`}
-                                        >
-                                            {isAnalyzing ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18}/>} 
-                                            <span>AI 自動辨識</span>
-                                        </button>
+                                        <div className="pt-4 mt-auto border-t border-slate-100 flex gap-3 flex-shrink-0">
+                                                <button onClick={() => setShowFilters(false)} className="flex-1 bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl transition-colors">
+                                                取消
+                                                </button>
+                                                <button onClick={applyFilters} className="flex-[2] bg-slate-900 hover:bg-black text-white font-bold py-4 rounded-2xl transition-colors shadow-lg shadow-slate-200">
+                                                確認
+                                                </button>
+                                        </div>
                                     </div>
-                                    
-                                    {/* 2. Compact Selectors */}
-                                    <div className="space-y-6">
-                                        <div>
-                                            <label className="text-xs font-extrabold text-slate-400 mb-3 block uppercase tracking-wider pl-1">適合季節</label>
-                                            <div className="flex gap-2">
-                                                {SEASONS.map(s => {
-                                                    const isSelected = newOutfit.seasons && newOutfit.seasons.includes(s.id);
-                                                    const Icon = s.icon;
+                                </>
+                            )}
+
+                            {/* Location Modal - MOVED TO ROOT LEVEL */}
+                            {isLocationModalOpen && (
+                                <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
+                                    <div className="bg-white rounded-t-[2rem] md:rounded-[2rem] w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden shadow-2xl h-[70vh] md:h-auto">
+                                        <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                                            <div className="flex items-center gap-2">
+                                                {locationModalStep === 'city' && (
+                                                    <button onClick={handleBackToCountry} className="p-1 -ml-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors">
+                                                        <ChevronLeft size={24} />
+                                                    </button>
+                                                )}
+                                                <h3 className="font-bold text-slate-800 text-lg">
+                                                    {locationModalStep === 'country' ? '選擇國家' : selectedCountry}
+                                                </h3>
+                                            </div>
+                                            <button onClick={() => setIsLocationModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
+                                        </div>
+                                        
+                                        <div className="overflow-y-auto p-4 space-y-2 pb-8 scrollbar-hide h-full">
+                                            {locationModalStep === 'country' && (
+                                                uniqueCountries.map(country => (
+                                                    <button 
+                                                        key={country}
+                                                        onClick={() => handleSelectCountry(country)}
+                                                        className="w-full p-4 rounded-2xl flex items-center justify-between transition-all bg-slate-50 text-slate-800 hover:bg-slate-100 group"
+                                                    >
+                                                        <span className="font-bold text-base">{country}</span>
+                                                        <ChevronRight size={20} className="text-slate-300 group-hover:text-slate-500"/>
+                                                    </button>
+                                                ))
+                                            )}
+
+                                            {locationModalStep === 'city' && (
+                                                LOCATIONS.map((loc, index) => {
+                                                    if (loc.country !== selectedCountry) return null;
+                                                    const isSelected = locationIndex === index;
                                                     return (
-                                                        <button key={s.id} onClick={() => toggleSeason(s.id)} className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-bold border-2 transition-all ${isSelected ? `${s.color} border-current/20 shadow-sm` : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}>
-                                                            <Icon size={18} /> {s.label}
+                                                        <button 
+                                                            key={index}
+                                                            onClick={() => handleSelectCity(index)}
+                                                            className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${isSelected ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                                                        >
+                                                            <span className={`font-bold text-base ${isSelected ? 'text-white' : 'text-slate-800'}`}>{loc.name}</span>
+                                                            {isSelected && <div className="bg-white/20 p-1 rounded-full"><Check size={16} className="text-white"/></div>}
                                                         </button>
                                                     );
-                                                })}
-                                            </div>
+                                                })
+                                            )}
                                         </div>
-                                        <div>
-                                            <label className="text-xs font-extrabold text-slate-400 mb-3 block uppercase tracking-wider pl-1">主要色系</label>
-                                            <div className="flex flex-wrap gap-2.5">
-                                                {COLORS.map(c => {
-                                                    const isSelected = newOutfit.colors && newOutfit.colors.includes(c.id);
-                                                    return (
-                                                        <button key={c.id} onClick={() => toggleColor(c.id)} className={`w-9 h-9 rounded-full border-2 transition-all flex items-center justify-center ${isSelected ? 'scale-110 ring-2 ring-cyan-400 border-white shadow-md' : 'border-transparent opacity-80 hover:opacity-100 hover:scale-105'}`} style={{backgroundColor: c.hex}} title={c.label}>
-                                                            {isSelected && <Check size={14} className={c.id === 'white' ? 'text-black' : 'text-white'} strokeWidth={3} />}
-                                                        </button>
-                                                    )
-                                                })}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* 3. Rain Toggle */}
-                                    <button 
-                                        onClick={() => updateNewOutfit({ isNotRainFriendly: !newOutfit.isNotRainFriendly })}
-                                        className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${newOutfit.isNotRainFriendly ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <div className={`p-3 rounded-full ${newOutfit.isNotRainFriendly ? 'bg-red-200 text-red-600' : 'bg-slate-100 text-slate-400'}`}>
-                                                <CloudRain size={20}/>
-                                            </div>
-                                            <div className="text-left">
-                                                <span className={`text-sm font-bold block ${newOutfit.isNotRainFriendly ? 'text-red-700' : 'text-slate-600'}`}>下雨天不穿</span>
-                                                {/* Changed text-[10px] to text-xs (14px) */}
-                                                <span className="text-xs text-slate-400 font-medium">若材質怕水或易髒請勾選</span>
-                                            </div>
-                                        </div>
-                                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${newOutfit.isNotRainFriendly ? 'bg-red-500 border-red-500' : 'border-slate-300 bg-white'}`}>
-                                            {newOutfit.isNotRainFriendly && <Check size={14} className="text-white"/>}
-                                        </div>
-                                    </button>
-
-                                    {/* Action Buttons */}
-                                    <div className="flex gap-3 pt-4">
-                                        <button onClick={handleCancelCreate} className="flex-1 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all text-sm flex items-center justify-center gap-2">
-                                            取消
-                                        </button>
-                                        <button onClick={handleSave} className="flex-[2] bg-slate-900 hover:bg-black text-white font-bold py-4 rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95 text-sm flex items-center justify-center gap-2">
-                                            <Check size={18}/> {newOutfit.id ? '儲存修改' : '完成建立'}
-                                        </button>
                                     </div>
                                 </div>
-                            </div>
-                        )}
-
-                        {view === 'manage' && (
-                            <div className="animate-fade-in">
-                                <div className="flex justify-between items-end mb-6 px-1">
-                                    <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">全部穿搭</h2>
-                                    <div className="flex items-center gap-2">
-                                        <button onClick={() => setShowFilters(!showFilters)} className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${showFilters || activeFilterCount > 0 ? 'bg-cyan-500 text-white shadow-md shadow-cyan-200' : 'bg-white text-slate-400 shadow-sm border border-slate-100'}`}>
-                                            <Filter size={18}/>
-                                        </button>
-                                        <span className="text-slate-500 text-xs font-bold bg-white px-3 py-2.5 rounded-full shadow-sm border border-slate-100">{manageList.length} 件</span>
-                                    </div>
-                                </div>
-
-                                {/* Filters */}
-                                {showFilters && (
-                                    <div className="mb-6 p-4 bg-white/80 backdrop-blur-md rounded-[2rem] border border-white shadow-sm animate-fade-in space-y-4 mx-1">
-                                        <div>
-                                            <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">季節</span>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => setManageFilterSeason(null)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${!manageFilterSeason ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-100'}`}>全部</button>
-                                                {SEASONS.map(s => (
-                                                    <button key={s.id} onClick={() => setManageFilterSeason(manageFilterSeason === s.id ? null : s.id)} className={`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors ${manageFilterSeason === s.id ? s.color : 'bg-white text-slate-400 border-slate-100'}`}>
-                                                        {s.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">顏色</span>
-                                            <div className="flex flex-wrap gap-2">
-                                                <button onClick={() => setManageFilterColor(null)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${!manageFilterColor ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>全部</button>
-                                                {COLORS.map(c => (
-                                                    <button key={c.id} onClick={() => setManageFilterColor(manageFilterColor === c.id ? null : c.id)} className={`w-8 h-8 rounded-full border flex items-center justify-center transition-transform ${manageFilterColor === c.id ? 'ring-2 ring-cyan-400 scale-110' : 'opacity-80'}`} style={{backgroundColor: c.hex}}>
-                                                        {manageFilterColor === c.id && <Check size={12} className={c.id === 'white' ? 'text-black' : 'text-white'}/>}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">特殊條件</span>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => setManageFilterRainFriendly(!manageFilterRainFriendly)} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${manageFilterRainFriendly ? 'bg-blue-100 text-blue-600 border-blue-200' : 'bg-white text-slate-400 border-slate-100'}`}>
-                                                    <Umbrella size={14}/> 雨天OK
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {outfits.length === 0 ? (
-                                    <EmptyState 
-                                        message="還沒有任何衣物" 
-                                        subMessage="開始整理你的衣櫃，讓生活更有條理！"
-                                        action={() => handleViewChange('create', true)}
-                                    />
-                                ) : (
-                                    <div className="flex flex-col gap-4 pb-20">
-                                        {manageList.length > 0 ? manageList.map(outfit => (
-                                            <div key={outfit.id} className="flex bg-white rounded-[1.5rem] p-3 pr-4 border border-white shadow-sm items-start gap-4 hover:shadow-md transition-shadow">
-                                                <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gray-50 flex-shrink-0">
-                                                    <img src={outfit.image} className="w-full h-full object-cover" alt="Outfit"/>
-                                                </div>
-                                                <div className="flex-1 min-w-0 flex flex-col gap-2 py-1">
-                                                    <div className="flex items-start justify-between">
-                                                        <div className="flex flex-wrap gap-1.5">
-                                                            {/* Changed text-[10px] to text-xs (14px) */}
-                                                            {outfit.seasons.map(sid => <SeasonBadge key={sid} seasonId={sid} minimal />)}
-                                                            {outfit.isNotRainFriendly && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold bg-red-50 text-red-500 border border-red-100"><Umbrella size={10} className="line-through"/> 怕水</span>}
-                                                        </div>
-                                                        <div className="flex gap-1 -mr-1">
-                                                            <button onClick={(e) => handleEdit(outfit, e)} className="p-2 rounded-full text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"><Pencil size={16}/></button>
-                                                            <button onClick={() => setDeleteId(outfit.id)} className="p-2 rounded-full text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={16}/></button>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Highlight Text in Manage View (Full Sentence) */}
-                                                    <p className="text-xs text-slate-600 leading-relaxed font-medium bg-slate-50 p-2.5 rounded-xl">
-                                                        {outfit.highlight ? (
-                                                            <>
-                                                                <span className="mr-1 text-base">💡</span>{outfit.highlight}
-                                                            </>
-                                                        ) : (
-                                                            <span className="text-slate-400 italic">暫無亮點描述</span>
-                                                        )}
-                                                    </p>
-
-                                                    <div className="flex gap-1.5 mt-auto pt-1">
-                                                        {outfit.colors.map(cid => { const c = COLORS.find(x => x.id === cid); return c ? <div key={cid} className="w-2.5 h-2.5 rounded-full border border-slate-200" style={{backgroundColor: c.hex}}></div> : null; })}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )) : (
-                                            <div className="text-center py-16 bg-white/50 rounded-[2rem] border-2 border-white border-dashed">
-                                                <div className="text-4xl mb-2">🧐</div>
-                                                <div className="text-slate-500 font-bold">找不到符合條件的衣物</div>
-                                                <div className="text-xs text-slate-400 mt-1">試著放寬篩選條件看看？</div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Custom Delete Modal */}
-                                {deleteId && (
-                                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-fade-in">
-                                        <div className="bg-white rounded-[2rem] p-6 shadow-2xl max-w-xs w-full border border-white/50">
-                                            <div className="flex flex-col items-center gap-4 text-center">
-                                                <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center text-red-500 mb-1">
-                                                    <AlertCircle size={28}/>
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-xl font-bold text-slate-800">確定要刪除嗎？</h3>
-                                                    <p className="text-sm text-slate-500 mt-2 leading-relaxed">這件穿搭將會從你的衣櫃中永久消失，無法復原喔！</p>
-                                                </div>
-                                                <div className="flex gap-3 w-full mt-4">
-                                                    <button onClick={() => setDeleteId(null)} className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm">取消</button>
-                                                    <button onClick={confirmDelete} className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-200 text-sm">刪除</button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Location Modal */}
-                        {isLocationModalOpen && (
-                            <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
-                                <div className="bg-white rounded-t-[2rem] md:rounded-[2rem] w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden shadow-2xl">
-                                    <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
-                                        <h3 className="font-bold text-slate-800 text-lg">選擇地區</h3>
-                                        <button onClick={() => setIsLocationModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
-                                    </div>
-                                    <div className="overflow-y-auto p-4 space-y-2 pb-8 scrollbar-hide">
-                                        {LOCATIONS.map((loc, index) => (
-                                            <button 
-                                                key={index}
-                                                onClick={() => { setLocationIndex(index); setIsLocationModalOpen(false); }}
-                                                className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${locationIndex === index ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-                                            >
-                                                <div className="flex flex-col items-start">
-                                                    <span className={`font-bold text-base ${locationIndex === index ? 'text-white' : 'text-slate-800'}`}>{loc.name}</span>
-                                                    <span className={`text-xs ${locationIndex === index ? 'text-slate-300' : 'text-slate-400'}`}>{loc.country}</span>
-                                                </div>
-                                                {locationIndex === index && <div className="bg-white/20 p-1 rounded-full"><Check size={16} className="text-white"/></div>}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
 
                     <TabBarMobile view={view} onViewChange={handleViewChange} />
