@@ -735,7 +735,8 @@
                 // 3. Start Analyze
                 setIsAnalyzing(true);
                 try {
-                    const prompt = `分析圖片: 季節(summer/spring_autumn/winter), 色系(${COLORS.map(c=>c.id).join(',')})。請用繁體中文提供一句簡短的穿搭亮點描述(highlight)，語氣時尚專業，不要使用Emoji，20字以內。回傳JSON格式。`;
+                    // 修改 Prompt：加入「忽略人物頭髮顏色、膚色」的指令
+                    const prompt = `分析圖片: 季節(summer/spring_autumn/winter), 色系(${COLORS.map(c=>c.id).join(',')})。請忽略人物的頭髮顏色、膚色，只針對服裝進行色系分析。請用繁體中文提供一句簡短的穿搭亮點描述(highlight)，語氣時尚專業，不要使用Emoji，20字以內。回傳JSON格式。`;
                     const jsonStr = await generateGeminiContent(effectiveKey, prompt, newOutfit.image, true);
                     
                     try {
@@ -1049,7 +1050,7 @@
                                                 disabled={isAnalyzing}
                                             >
                                                 {isAnalyzing ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18}/>} 
-                                                <span>AI 自動辨識</span>
+                                                <span>AI 幫你填</span>
                                             </button>
                                         </div>
                                         
