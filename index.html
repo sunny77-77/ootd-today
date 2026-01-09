@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 增加 Referrer Policy 以確保外部圖片能順利載入 -->
+    <meta name="referrer" content="no-referrer">
     <title>今天穿什麼 (OOTD)</title>
     
     <!-- React & ReactDOM -->
@@ -108,9 +110,17 @@
         // --- Icon Shim for Lucide in Browser ---
         const createLucideIcon = (iconName) => {
             return ({ size = 24, className, ...props }) => {
-                if (!window.lucide || !window.lucide.icons) return null;
+                const [mounted, setMounted] = useState(false);
+                
+                useEffect(() => {
+                    setMounted(true);
+                }, []);
+
+                if (!mounted || !window.lucide || !window.lucide.icons) return null;
+                
                 const iconData = window.lucide.icons[iconName];
                 if (!iconData) return null;
+
                 return (
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -166,11 +176,9 @@
         const Globe = createLucideIcon('Globe');
         const ChevronDown = createLucideIcon('ChevronDown');
         const Key = createLucideIcon('Key');
-
+        const ImageOff = createLucideIcon('ImageOff'); 
 
         // --- Gemini API Configuration ---
-        // 為了安全起見，API Key 應該由使用者輸入，或是在後端環境變數中設定。
-        // 在此純前端 Demo 中，我們讓使用者在 UI 中輸入 Key。
         const apiKey = ""; 
 
         const getEffectiveApiKey = () => {
@@ -188,26 +196,13 @@
             { country: "台灣", name: "桃園市", lat: 24.9936, lng: 121.3009 },
             { country: "台灣", name: "新竹市", lat: 24.8138, lng: 120.9674 },
             { country: "台灣", name: "新竹縣", lat: 24.8396, lng: 121.0177 },
-            { country: "台灣", name: "苗栗縣", lat: 24.5601, lng: 120.8214 },
             { country: "台灣", name: "台中市", lat: 24.1477, lng: 120.6736 },
-            { country: "台灣", name: "彰化縣", lat: 24.0517, lng: 120.5160 },
-            { country: "台灣", name: "南投縣", lat: 23.9609, lng: 120.9718 },
-            { country: "台灣", name: "雲林縣", lat: 23.7092, lng: 120.4313 },
-            { country: "台灣", name: "嘉義市", lat: 23.4800, lng: 120.4491 },
-            { country: "台灣", name: "嘉義縣", lat: 23.4518, lng: 120.2554 },
             { country: "台灣", name: "台南市", lat: 22.9997, lng: 120.2270 },
             { country: "台灣", name: "高雄市", lat: 22.6272, lng: 120.3014 },
-            { country: "台灣", name: "屏東縣", lat: 22.5519, lng: 120.5487 },
             { country: "台灣", name: "宜蘭縣", lat: 24.7021, lng: 121.7377 },
-            { country: "台灣", name: "花蓮縣", lat: 23.9871, lng: 121.6015 },
-            { country: "台灣", name: "台東縣", lat: 22.7583, lng: 121.1444 },
-            { country: "台灣", name: "澎湖縣", lat: 23.5711, lng: 119.5793 },
-            { country: "台灣", name: "金門縣", lat: 24.3263, lng: 118.3181 },
-            { country: "台灣", name: "連江縣", lat: 26.1552, lng: 119.9298 },
             { country: "日本", name: "東京", lat: 35.6895, lng: 139.6917 },
+            { country: "日本", name: "大阪", lat: 34.6937, lng: 135.5023 },
             { country: "韓國", name: "首爾", lat: 37.5665, lng: 126.9780 },
-            { country: "美國", name: "紐約", lat: 40.7128, lng: -74.0060 },
-            { country: "英國", name: "倫敦", lat: 51.5074, lng: -0.1278 },
         ];
 
         const SEASONS = [
@@ -236,26 +231,107 @@
             { id: 'black', hex: "#1E293B", label: "黑" },
         ];
 
+        // --- NEW INITIAL OUTFITS (Realistic Mock Data) ---
         const INITIAL_OUTFITS = [
             {
                 id: 1,
-                image: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500&q=80",
-                seasons: ['winter', 'spring_autumn'],
-                isNotRainFriendly: true, 
-                colors: ['pink', 'white'], 
+                image: "https://i.postimg.cc/Kk1mJwNw/IMG-4886.jpg",
+                seasons: ['spring_autumn', 'winter'],
+                isNotRainFriendly: false, 
+                colors: ['gray', 'blue'], 
                 lastWorn: new Date().toISOString(),
-                createdAt: "2025-01-08T14:30:00.000Z", // Added Mock Creation Date
-                highlight: "溫柔粉色針織衫搭簡約下身，展現甜美氣質，約會首選！"
+                createdAt: "2024-12-15T14:30:00.000Z", 
+                highlight: "舒適的灰色衛衣搭配牛仔褲，週末出門最愛。"
             },
             {
                 id: 2,
-                image: "https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?w=500&q=80",
+                image: "https://i.postimg.cc/628BYgcK/IMG-4887.jpg",
+                seasons: ['winter'],
+                isNotRainFriendly: true,
+                colors: ['brown', 'white'],
+                lastWorn: new Date().toISOString(),
+                createdAt: "2025-01-12T09:15:00.000Z", 
+                highlight: "韓系卡其色長大衣，穿上去氣場瞬間提升！"
+            },
+            {
+                id: 3,
+                image: "https://i.postimg.cc/Kk1mJwf2/IMG-4888.jpg",
                 seasons: ['spring_autumn', 'summer'],
                 isNotRainFriendly: false,
-                colors: ['white', 'gray'],
+                colors: ['white', 'black'],
                 lastWorn: new Date().toISOString(),
-                createdAt: "2025-03-12T09:15:00.000Z", // Added Mock Creation Date
-                highlight: "清爽俐落的淺色套裝，上班休閒兩相宜，展現知性美感"
+                createdAt: "2025-04-05T11:20:00.000Z",
+                highlight: "簡約白襯衫配黑寬褲，上班開會不出錯。"
+            },
+            {
+                id: 4,
+                image: "https://i.postimg.cc/47YXBqPT/IMG-4889.jpg",
+                seasons: ['winter'],
+                isNotRainFriendly: true,
+                colors: ['black', 'gray'],
+                lastWorn: new Date().toISOString(),
+                createdAt: "2025-02-20T08:45:00.000Z",
+                highlight: "全黑層次穿搭，搭配圍巾保暖又有型。"
+            },
+            {
+                id: 5,
+                image: "https://i.postimg.cc/2b1C2MGm/IMG-4890.jpg",
+                seasons: ['spring_autumn'],
+                isNotRainFriendly: false,
+                colors: ['green', 'white'],
+                lastWorn: new Date().toISOString(),
+                createdAt: "2025-03-15T16:10:00.000Z",
+                highlight: "這件墨綠色針織外套顏色很特別，顯白。"
+            },
+            {
+                id: 6,
+                image: "https://i.postimg.cc/62FtScbx/IMG-4891.jpg",
+                seasons: ['summer'],
+                isNotRainFriendly: false,
+                colors: ['blue', 'white'],
+                lastWorn: new Date().toISOString(),
+                createdAt: "2025-07-10T19:30:00.000Z",
+                highlight: "淺藍色洋裝，去海邊度假一定要帶這件。"
+            },
+            {
+                id: 7,
+                image: "https://i.postimg.cc/sQbs8mHR/IMG-4909.jpg",
+                seasons: ['spring_autumn', 'winter'],
+                isNotRainFriendly: false,
+                colors: ['gray', 'pink'],
+                lastWorn: new Date().toISOString(),
+                createdAt: "2025-11-22T13:00:00.000Z",
+                highlight: "大學T配百褶裙，減齡學院風。"
+            },
+            {
+                id: 8,
+                image: "https://i.postimg.cc/r07MbjZM/IMG-4910.jpg",
+                seasons: ['winter'],
+                isNotRainFriendly: true,
+                colors: ['white', 'brown'],
+                lastWorn: new Date().toISOString(),
+                createdAt: "2024-12-25T10:00:00.000Z",
+                highlight: "泰迪熊毛毛外套，寒流來襲就靠它了。"
+            },
+            {
+                id: 9,
+                image: "https://i.postimg.cc/62FtScbX/IMG-4911.jpg",
+                seasons: ['summer'],
+                isNotRainFriendly: false,
+                colors: ['yellow', 'blue'],
+                lastWorn: new Date().toISOString(),
+                createdAt: "2025-08-11T15:20:00.000Z",
+                highlight: "亮黃色上衣配短褲，充滿夏日活力的感覺。"
+            },
+            {
+                id: 10,
+                image: "https://i.postimg.cc/Q9vhPmYX/IMG-4912.jpg",
+                seasons: ['spring_autumn'],
+                isNotRainFriendly: false,
+                colors: ['black', 'white'],
+                lastWorn: new Date().toISOString(),
+                createdAt: "2025-10-08T10:00:00.000Z",
+                highlight: "條紋長袖T恤，隨便搭都好看的懶人救星。"
             }
         ];
 
@@ -270,6 +346,32 @@
             const s = SEASONS.find(x => x.id === seasonId);
             const Icon = s ? s.icon : null;
             return s ? <span className={`inline-flex items-center gap-1 rounded-full font-medium ${s.color} ${minimal ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-xs'}`}>{!minimal && <Icon size={14}/>}{s.label}</span> : null;
+        };
+
+        // Image with Fallback Component
+        const OutfitImage = ({ src, alt, className }) => {
+            const [error, setError] = useState(false);
+            
+            if (error || !src) {
+                return (
+                    <div className={`flex flex-col items-center justify-center bg-slate-100 text-slate-300 ${className}`}>
+                        <ImageOff size={32} strokeWidth={1.5} />
+                        <span className="text-[10px] mt-1 font-bold">暫無圖片</span>
+                    </div>
+                );
+            }
+
+            return (
+                <img 
+                    src={src} 
+                    alt={alt} 
+                    className={className}
+                    onError={(e) => {
+                        console.error("Image load failed:", src);
+                        setError(true);
+                    }}
+                />
+            );
         };
 
         const EmptyState = ({ message, subMessage, action, buttonText = "新增穿搭" }) => (
@@ -514,9 +616,14 @@
             // Load from local storage
             useEffect(() => {
                 const saved = localStorage.getItem('ootd_outfits');
+                // Only load if saved data exists AND it has more than just the initial 2 items
+                // This prevents reverting to the old 2-item default if user clears cache but not storage
                 if (saved) {
                     try {
-                        setOutfits(JSON.parse(saved));
+                        const parsed = JSON.parse(saved);
+                        if (parsed.length > 0) {
+                             setOutfits(parsed);
+                        }
                     } catch (e) {
                         console.error("Failed to parse saved outfits", e);
                     }
@@ -550,7 +657,6 @@
 
             // --- Recommendations Logic ---
             const { homeRecommendations, availableColors } = useMemo(() => {
-                // 判斷是否有有效溫度數據
                 const hasWeatherData = typeof weatherData.minTemp === 'number' && typeof weatherData.maxTemp === 'number';
                 
                 const safeMinTemp = hasWeatherData ? weatherData.minTemp : 20;
@@ -562,33 +668,20 @@
                 const targetSeasons = new Set();
                 
                 if (hasWeatherData) {
-                    // 策略：依據溫度嚴格篩選，但在交界處給予寬容度
-                    // 修正邏輯：即使月份是夏天，如果氣溫低，也應該推薦冬裝，避免出現「夏日寒流卻推薦短袖」的情況。
-                    
-                    // 冬天：平均氣溫低於 20 度
                     if (avgTemp < 20) {
                         targetSeasons.add('winter');
-                        // 18-20 度之間，有些人體感可能覺得可以穿春秋裝（薄長袖）
                         if (avgTemp >= 18) targetSeasons.add('spring_autumn');
                     }
-                    
-                    // 春秋：20-26 度之間 (稍微放寬上下限)
                     else if (avgTemp >= 20 && avgTemp < 26) {
                         targetSeasons.add('spring_autumn');
-                        // 24-26 度接近夏天，可推薦夏裝
                         if (avgTemp >= 24) targetSeasons.add('summer');
-                        // 20-22 度接近冬天，可推薦冬裝（厚一點的）
                         if (avgTemp <= 22) targetSeasons.add('winter');
                     }
-                    
-                    // 夏天：26 度以上
                     else {
                         targetSeasons.add('summer');
-                        // 26-28 度可能還是有人想穿薄長袖防曬
                         if (avgTemp <= 28) targetSeasons.add('spring_autumn');
                     }
                 } else {
-                    // 只有在「完全沒有天氣資料」時，才使用月份作為 Fallback
                     if (SEASON_CONFIG.summer.months.includes(currentMonth)) targetSeasons.add('summer');
                     else if (SEASON_CONFIG.spring_autumn.months.includes(currentMonth)) targetSeasons.add('spring_autumn');
                     else targetSeasons.add('winter');
@@ -603,14 +696,10 @@
                     return seasonMatch && rainMatch;
                 });
 
-                // Fallback 1: 如果因為下雨篩選後沒衣服穿，為了避免沒衣服穿，暫時放寬「怕水」的限制（畢竟季節對比較重要）
                 if (base.length === 0 && safeRainProb > 50) {
                     base = outfits.filter(o => o.seasons && o.seasons.some(s => targetSeasons.has(s)));
                 }
                 
-                // 移除 Fallback 2 (原本的 base = [...outfits])
-                // 如果找不到符合季節的衣服，就保持空陣列，讓 UI 顯示「沒有適合今天的穿搭」
-
                 const colorsInBase = new Set();
                 base.forEach(o => o.colors?.forEach(c => colorsInBase.add(c)));
 
@@ -647,6 +736,7 @@
             // --- Actions ---
 
             const handleSelectOutfit = (id) => {
+                setSelectedOutfitId(prev => prev === id ? null : id);
             };
 
             const confirmSelection = () => {
@@ -697,7 +787,7 @@
                     const created = {
                     ...newOutfit,
                     id: Date.now(),
-                    createdAt: new Date().toISOString(), // Add Created Date for new items
+                    createdAt: new Date().toISOString(),
                     };
                     setOutfits([...outfits, created]);
                 }
@@ -720,22 +810,18 @@
             const handleAIAnalyze = async () => {
                 const effectiveKey = getStoredApiKey();
                 
-                // 1. Check Key
                 if (!effectiveKey) {
                     setIsApiKeyModalOpen(true);
                     return; 
                 }
 
-                // 2. Check Image
                 if (!newOutfit.image) {
                     showToast("請先上傳圖片！", "error");
                     return;
                 }
 
-                // 3. Start Analyze
                 setIsAnalyzing(true);
                 try {
-                    // 修改 Prompt：加入「忽略人物頭髮顏色、膚色」的指令
                     const prompt = `分析圖片: 季節(summer/spring_autumn/winter), 色系(${COLORS.map(c=>c.id).join(',')})。請忽略人物的頭髮顏色、膚色，只針對服裝進行色系分析。請用繁體中文提供一句簡短的穿搭亮點描述(highlight)，語氣時尚專業，不要使用Emoji，20字以內。回傳JSON格式。`;
                     const jsonStr = await generateGeminiContent(effectiveKey, prompt, newOutfit.image, true);
                     
@@ -760,12 +846,11 @@
                 } catch (e) {
                     console.error("AI Analyze Error:", e);
                     const errStr = (e.message || e.toString()).toLowerCase();
-                    // Check for common API key error keywords
                     if (errStr.includes("api key") || errStr.includes("leaked") || errStr.includes("key expired") || errStr.includes("403") || errStr.includes("400")) {
                         console.warn("API Key Error detected, clearing storage:", e.message);
-                        localStorage.removeItem('gemini_api_key'); // Force clear
-                        setTempApiKey(''); // Clear state
-                        setIsApiKeyModalOpen(true); // Force modal open
+                        localStorage.removeItem('gemini_api_key'); 
+                        setTempApiKey(''); 
+                        setIsApiKeyModalOpen(true); 
                         showToast("API Key 無效或已失效，請重新輸入", "error");
                     } else {
                         showToast("AI 連線失敗，請檢查網路", "error");
@@ -780,7 +865,6 @@
                     let inlineDataPart = null;
                     if (imageBase64 && imageBase64.includes(',')) {
                         const [meta, data] = imageBase64.split(',');
-                        // Extract mime type from "data:image/png;base64" or default to jpeg
                         const mimeType = meta.match(/:(.*?);/)?.[1] || "image/jpeg";
                         inlineDataPart = { inlineData: { mimeType: mimeType, data: data } };
                     }
@@ -872,8 +956,64 @@
                         </div>
                     )}
 
+                    {/* Location Selection Modal */}
+                    {isLocationModalOpen && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-in">
+                            <div className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full h-[60vh] flex flex-col overflow-hidden animate-slide-up">
+                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                                    <div className="flex items-center gap-2">
+                                        {locationModalStep === 'city' && (
+                                            <button onClick={handleBackToCountry} className="p-2 -ml-2 rounded-full hover:bg-slate-50">
+                                                <ChevronLeft size={20} className="text-slate-500"/>
+                                            </button>
+                                        )}
+                                        <h3 className="font-bold text-slate-800 text-lg">
+                                            {locationModalStep === 'country' ? '選擇國家' : selectedCountry}
+                                        </h3>
+                                    </div>
+                                    <button onClick={() => setIsLocationModalOpen(false)} className="p-2 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200">
+                                        <X size={20}/>
+                                    </button>
+                                </div>
+                                
+                                <div className="overflow-y-auto p-2 flex-1 scrollbar-hide">
+                                    {locationModalStep === 'country' ? (
+                                        <div className="grid grid-cols-1 gap-1">
+                                            {uniqueCountries.map(country => (
+                                                <button 
+                                                    key={country}
+                                                    onClick={() => handleSelectCountry(country)}
+                                                    className="w-full text-left p-4 rounded-2xl hover:bg-cyan-50 transition-colors flex items-center justify-between group"
+                                                >
+                                                    <span className="font-bold text-slate-700 group-hover:text-cyan-700">{country}</span>
+                                                    <ChevronRight size={18} className="text-slate-300 group-hover:text-cyan-400"/>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 gap-1">
+                                            {LOCATIONS.map((loc, index) => {
+                                                if (loc.country !== selectedCountry) return null;
+                                                const isActive = index === locationIndex;
+                                                return (
+                                                    <button 
+                                                        key={index}
+                                                        onClick={() => handleSelectCity(index)}
+                                                        className={`w-full text-left p-4 rounded-2xl transition-colors flex items-center justify-between ${isActive ? 'bg-cyan-50' : 'hover:bg-slate-50'}`}
+                                                    >
+                                                        <span className={`font-bold ${isActive ? 'text-cyan-700' : 'text-slate-700'}`}>{loc.name}</span>
+                                                        {isActive && <Check size={18} className="text-cyan-500"/>}
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Main Content Area - Scrollable */}
-                    {/* 增加這裡的 pb-28 到 pb-44，確保內容可以捲動到按鈕上方，而不是被擋住 */}
                     <div className="flex-1 overflow-y-auto scrollbar-hide pb-44 md:pb-10 z-10">
                         <div className="max-w-3xl mx-auto px-4 py-6">
                             <div className="flex justify-between items-center mb-4 md:mb-6">
@@ -965,7 +1105,7 @@
                                             {/* Filter Bar */}
                                             <div className="mb-6 space-y-3">
                                                 <div className="overflow-x-auto pb-2 scrollbar-hide">
-                                                    <div className="flex gap-2 px-1">
+                                                    <div className="flex gap-2 p-2">
                                                         <button onClick={() => setHomeFilterColor(null)} className={`flex-shrink-0 px-5 py-2.5 rounded-full text-xs font-bold transition-all border ${!homeFilterColor ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200'}`}>全部</button>
                                                         {COLORS.filter(c => availableColors.includes(c.id)).map(c => (
                                                             <button key={c.id} onClick={() => setHomeFilterColor(homeFilterColor === c.id ? null : c.id)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full border transition-all ${homeFilterColor === c.id ? 'bg-white ring-2 ring-cyan-500 border-transparent shadow-md' : 'bg-white border-slate-200 shadow-sm hover:bg-slate-50'}`}>
@@ -985,7 +1125,7 @@
                                                     return (
                                                     <div key={outfit.id} onClick={() => handleSelectOutfit(outfit.id)} className={`relative group rounded-3xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 border bg-white ${isSelected ? 'border-cyan-400 ring-4 ring-cyan-50' : 'border-white'}`}>
                                                         <div className="aspect-[3/4] bg-slate-100 relative">
-                                                            <img src={outfit.image} alt="Outfit" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                                            <OutfitImage src={outfit.image} alt="Outfit" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                                                         </div>
                                                     </div>
                                                     )
@@ -1013,13 +1153,12 @@
                                         </h2>
                                     </div>
                                     
-                                    {/* 移除這裡原本的 pb-32，讓卡片高度自然收縮 */}
                                     <div className="space-y-6">
                                         {/* 1. Image Upload */}
                                         <div className="flex flex-col gap-4">
                                             <div className="w-full aspect-square bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center relative overflow-hidden group hover:border-cyan-300 transition-colors">
                                                 {newOutfit.image ? (
-                                                    <img src={newOutfit.image} className="w-full h-full object-cover" alt="Preview"/>
+                                                    <OutfitImage src={newOutfit.image} className="w-full h-full object-cover" alt="Preview"/>
                                                 ) : (
                                                     <div className="text-center p-6 text-slate-400">
                                                         <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-slate-300 group-hover:text-cyan-400 group-hover:scale-110 transition-all">
@@ -1129,7 +1268,6 @@
                                         </div>
                                     </div>
 
-                                    {/* LIST RENDERING RESTORED HERE */}
                                     {outfits.length === 0 ? (
                                         <EmptyState 
                                             message="衣櫃空空如也" 
@@ -1142,7 +1280,7 @@
                                             {manageList.length > 0 ? manageList.map(outfit => (
                                                 <div key={outfit.id} className="flex bg-white rounded-[1.5rem] p-3 pr-4 border border-white shadow-sm items-start gap-4 hover:shadow-md transition-shadow">
                                                     <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gray-50 flex-shrink-0">
-                                                        <img src={outfit.image} className="w-full h-full object-cover" alt="Outfit"/>
+                                                        <OutfitImage src={outfit.image} className="w-full h-full object-cover" alt="Outfit"/>
                                                     </div>
                                                     <div className="flex-1 min-w-0 flex flex-col gap-2 py-1">
                                                         <div className="flex items-start justify-between">
@@ -1187,7 +1325,7 @@
                         </div>
                     </div>
 
-                    {/* Filters & Modals MOVED to Root Level */}
+                    {/* Filters & Modals */}
                     {showFilters && (
                         <>
                             <div 
@@ -1243,7 +1381,7 @@
                         </>
                     )}
                     
-                    {/* Delete Modal - MOVED TO ROOT LEVEL */}
+                    {/* Delete Modal */}
                     {deleteId && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-fade-in">
                             <div className="bg-white rounded-[2rem] p-6 shadow-2xl max-w-xs w-full border border-white/50">
@@ -1264,7 +1402,7 @@
                         </div>
                     )}
 
-                    {/* Mobile Fixed Action Buttons (Moved Outside to prevent transform issues) */}
+                    {/* Mobile Fixed Action Buttons */}
                     {view === 'create' && (
                         <div className="fixed bottom-[80px] left-0 right-0 p-4 bg-white/95 backdrop-blur-sm border-t border-slate-100 z-40 md:hidden animate-slide-up">
                             <div className="flex gap-3 max-w-lg mx-auto">
