@@ -615,7 +615,8 @@
 
             // Load from local storage
             useEffect(() => {
-                const saved = localStorage.getItem('ootd_outfits');
+                // 修改 Key 為 'ootd_data_v2_fixed' 以強制載入新的 10 套預設穿搭，避免被舊的快取覆蓋
+                const saved = localStorage.getItem('ootd_data_v2_fixed');
                 // Only load if saved data exists AND it has more than just the initial 2 items
                 // This prevents reverting to the old 2-item default if user clears cache but not storage
                 if (saved) {
@@ -632,7 +633,7 @@
 
             // Save to local storage
             useEffect(() => {
-                localStorage.setItem('ootd_outfits', JSON.stringify(outfits));
+                localStorage.setItem('ootd_data_v2_fixed', JSON.stringify(outfits));
             }, [outfits]);
 
             // Navigation Guard
