@@ -267,16 +267,18 @@
             return s ? <span className={`inline-flex items-center gap-1 rounded-full font-medium ${s.color} ${minimal ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-xs'}`}>{!minimal && <Icon size={14}/>}{s.label}</span> : null;
         };
 
-        const EmptyState = ({ message, subMessage, action }) => (
+        const EmptyState = ({ message, subMessage, action, buttonText = "新增穿搭" }) => (
             <div className="flex flex-col items-center justify-center py-20 px-8 text-center animate-fade-in bg-white rounded-3xl border border-slate-100 mx-4 mt-8 shadow-sm">
                 <div className="w-24 h-24 bg-cyan-50 rounded-full flex items-center justify-center mb-6 text-cyan-500">
                     <Shirt size={48} strokeWidth={1.5} />
                 </div>
                 <h3 className="text-xl font-bold text-slate-800 mb-3">{message}</h3>
                 <p className="text-slate-500 text-sm mb-8 max-w-xs leading-relaxed">{subMessage}</p>
-                <button onClick={action} className="bg-cyan-500 hover:bg-cyan-600 text-white px-8 py-3.5 rounded-full font-bold shadow-lg shadow-cyan-200 transition-all flex items-center gap-2 text-sm">
-                    <Plus size={20} /> 新增第一套
-                </button>
+                {action && (
+                    <button onClick={action} className="bg-cyan-500 hover:bg-cyan-600 text-white px-8 py-3.5 rounded-full font-bold shadow-lg shadow-cyan-200 transition-all flex items-center gap-2 text-sm">
+                        <Plus size={20} /> {buttonText}
+                    </button>
+                )}
             </div>
         );
 
@@ -295,21 +297,24 @@
         );
 
         const TabBarMobile = ({ view, onViewChange }) => (
-            <div className="fixed bottom-0 left-0 right-0 h-[84px] bg-white/95 backdrop-blur-md border-t border-slate-100 z-50 grid grid-cols-3 items-start pt-3 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] md:hidden">
-                <button onClick={() => onViewChange('home')} className={`flex flex-col items-center justify-center gap-1 transition-all ${view === 'home' ? 'text-cyan-600' : 'text-slate-400 hover:text-slate-600'}`}>
+            <div className="fixed bottom-0 left-0 right-0 h-[80px] bg-white/95 backdrop-blur-md border-t border-slate-100 z-50 grid grid-cols-3 items-center pb-2 md:hidden shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
+                <button onClick={() => onViewChange('home')} className={`flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${view === 'home' ? 'text-cyan-600' : 'text-slate-400 hover:text-slate-600'}`}>
                     <Shirt size={24} strokeWidth={view === 'home' ? 2.5 : 2} />
-                    <span className="text-xs font-medium tracking-wide">今日穿搭</span>
+                    <span className="text-[10px] font-bold tracking-wide">今日穿搭</span>
                 </button>
                 
-                <div className="flex justify-center -mt-8">
-                    <button onClick={() => onViewChange('create', true)} className={`w-16 h-16 rounded-full flex items-center justify-center shadow-xl transition-all transform active:scale-95 ${view === 'create' ? 'bg-cyan-600 text-white' : 'bg-cyan-500 text-white hover:bg-cyan-600'}`}>
-                        <Plus size={32} strokeWidth={3} />
+                <div className="flex justify-center items-center h-full">
+                    <button 
+                        onClick={() => onViewChange('create', true)} 
+                        className="bg-cyan-500 hover:bg-cyan-600 text-white w-14 h-14 rounded-2xl shadow-lg shadow-cyan-200 active:scale-95 transition-all flex items-center justify-center"
+                    >
+                        <Plus size={28} strokeWidth={3} />
                     </button>
                 </div>
 
-                <button onClick={() => onViewChange('manage')} className={`flex flex-col items-center justify-center gap-1 transition-all ${view === 'manage' ? 'text-cyan-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                <button onClick={() => onViewChange('manage')} className={`flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${view === 'manage' ? 'text-cyan-600' : 'text-slate-400 hover:text-slate-600'}`}>
                     <LayoutGrid size={24} strokeWidth={view === 'manage' ? 2.5 : 2} />
-                    <span className="text-xs font-medium tracking-wide">全部穿搭</span>
+                    <span className="text-[10px] font-bold tracking-wide">全部穿搭</span>
                 </button>
             </div>
         );
@@ -540,21 +545,49 @@
 
             // --- Recommendations Logic ---
             const { homeRecommendations, availableColors } = useMemo(() => {
-                const safeMinTemp = typeof weatherData.minTemp === 'number' ? weatherData.minTemp : 20;
-                const safeMaxTemp = typeof weatherData.maxTemp === 'number' ? weatherData.maxTemp : 25;
+                // 判斷是否有有效溫度數據
+                const hasWeatherData = typeof weatherData.minTemp === 'number' && typeof weatherData.maxTemp === 'number';
+                
+                const safeMinTemp = hasWeatherData ? weatherData.minTemp : 20;
+                const safeMaxTemp = hasWeatherData ? weatherData.maxTemp : 25;
                 const safeRainProb = typeof weatherData.rainProb === 'number' ? weatherData.rainProb : 30;
 
                 const avgTemp = (safeMinTemp + safeMaxTemp) / 2;
                 const currentMonth = new Date().getMonth();
                 const targetSeasons = new Set();
                 
-                if (avgTemp > 25) targetSeasons.add('summer');
-                else if (avgTemp >= 20) targetSeasons.add('spring_autumn');
-                else targetSeasons.add('winter');
-
-                if (SEASON_CONFIG.summer.months.includes(currentMonth)) targetSeasons.add('summer');
-                else if (SEASON_CONFIG.spring_autumn.months.includes(currentMonth)) targetSeasons.add('spring_autumn');
-                else targetSeasons.add('winter');
+                if (hasWeatherData) {
+                    // 策略：依據溫度嚴格篩選，但在交界處給予寬容度
+                    // 修正邏輯：即使月份是夏天，如果氣溫低，也應該推薦冬裝，避免出現「夏日寒流卻推薦短袖」的情況。
+                    
+                    // 冬天：平均氣溫低於 20 度
+                    if (avgTemp < 20) {
+                        targetSeasons.add('winter');
+                        // 18-20 度之間，有些人體感可能覺得可以穿春秋裝（薄長袖）
+                        if (avgTemp >= 18) targetSeasons.add('spring_autumn');
+                    }
+                    
+                    // 春秋：20-26 度之間 (稍微放寬上下限)
+                    else if (avgTemp >= 20 && avgTemp < 26) {
+                        targetSeasons.add('spring_autumn');
+                        // 24-26 度接近夏天，可推薦夏裝
+                        if (avgTemp >= 24) targetSeasons.add('summer');
+                        // 20-22 度接近冬天，可推薦冬裝（厚一點的）
+                        if (avgTemp <= 22) targetSeasons.add('winter');
+                    }
+                    
+                    // 夏天：26 度以上
+                    else {
+                        targetSeasons.add('summer');
+                        // 26-28 度可能還是有人想穿薄長袖防曬
+                        if (avgTemp <= 28) targetSeasons.add('spring_autumn');
+                    }
+                } else {
+                    // 只有在「完全沒有天氣資料」時，才使用月份作為 Fallback
+                    if (SEASON_CONFIG.summer.months.includes(currentMonth)) targetSeasons.add('summer');
+                    else if (SEASON_CONFIG.spring_autumn.months.includes(currentMonth)) targetSeasons.add('spring_autumn');
+                    else targetSeasons.add('winter');
+                }
 
                 let base = outfits.filter(o => {
                     const seasonMatch = o.seasons && o.seasons.some(s => targetSeasons.has(s));
@@ -565,12 +598,13 @@
                     return seasonMatch && rainMatch;
                 });
 
+                // Fallback 1: 如果因為下雨篩選後沒衣服穿，為了避免沒衣服穿，暫時放寬「怕水」的限制（畢竟季節對比較重要）
                 if (base.length === 0 && safeRainProb > 50) {
                     base = outfits.filter(o => o.seasons && o.seasons.some(s => targetSeasons.has(s)));
                 }
-                if (base.length === 0 && outfits.length > 0) {
-                    base = [...outfits];
-                }
+                
+                // 移除 Fallback 2 (原本的 base = [...outfits])
+                // 如果找不到符合季節的衣服，就保持空陣列，讓 UI 顯示「沒有適合今天的穿搭」
 
                 const colorsInBase = new Set();
                 base.forEach(o => o.colors?.forEach(c => colorsInBase.add(c)));
@@ -888,7 +922,7 @@
                                                     
                                                     {/* Rain Bar */}
                                                     <div className="flex items-center gap-1">
-                                                        <Droplets size={10} className="text-cyan-500 fill-current"/>
+                                                        <Droplets size={16} className="text-cyan-500 fill-current"/>
                                                         <span className="text-xs font-bold text-cyan-600">
                                                             {weatherData.isLoading ? '-' : weatherData.rainProb}%
                                                         </span>
@@ -896,7 +930,7 @@
 
                                                     {/* Wind Bar */}
                                                     <div className="flex items-center gap-1">
-                                                        <Wind size={10} className="text-slate-400 fill-current"/>
+                                                        <Wind size={16} className="text-slate-400 fill-current"/>
                                                         <span className="text-xs font-bold text-slate-500">
                                                             {weatherData.isLoading ? '-' : weatherData.windSpeed}<span className="text-[10px] ml-0.5">km/h</span>
                                                         </span>
@@ -911,7 +945,8 @@
                                     {outfits.length === 0 ? (
                                         <EmptyState 
                                             message="衣櫃空空如也" 
-                                            subMessage="快去新增你的第一套穿搭，讓 AI 幫你決定明天穿什麼吧！"
+                                            subMessage="快去新增第一套穿搭，讓我來推薦今天適合怎麼穿吧！"
+                                            buttonText="新增穿搭"
                                             action={() => handleViewChange('create', true)}
                                         />
                                     ) : (
@@ -923,8 +958,8 @@
                                                         <button onClick={() => setHomeFilterColor(null)} className={`flex-shrink-0 px-5 py-2.5 rounded-full text-xs font-bold transition-all border ${!homeFilterColor ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200'}`}>全部</button>
                                                         {COLORS.filter(c => availableColors.includes(c.id)).map(c => (
                                                             <button key={c.id} onClick={() => setHomeFilterColor(homeFilterColor === c.id ? null : c.id)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full border transition-all ${homeFilterColor === c.id ? 'bg-white ring-2 ring-cyan-500 border-transparent shadow-md' : 'bg-white border-slate-200 shadow-sm hover:bg-slate-50'}`}>
-                                                                    <div className="w-3 h-3 rounded-full border border-slate-100" style={{backgroundColor: c.hex}}></div>
-                                                                    <span className={`text-xs ${homeFilterColor === c.id ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{c.label}</span>
+                                                                <div className="w-3 h-3 rounded-full border border-slate-100" style={{backgroundColor: c.hex}}></div>
+                                                                <span className={`text-xs ${homeFilterColor === c.id ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{c.label}</span>
                                                             </button>
                                                         ))}
                                                     </div>
@@ -940,25 +975,18 @@
                                                     <div key={outfit.id} onClick={() => handleSelectOutfit(outfit.id)} className={`relative group rounded-3xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 border bg-white ${isSelected ? 'border-cyan-400 ring-4 ring-cyan-50' : 'border-white'}`}>
                                                         <div className="aspect-[3/4] bg-slate-100 relative">
                                                             <img src={outfit.image} alt="Outfit" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                                                            
-                                                            {/* Rain Indicator Overlay */}
-                                                            {outfit.isNotRainFriendly && (
-                                                                <div className="absolute top-3 right-3">
-                                                                    <span className="bg-white/90 backdrop-blur-md text-slate-400 text-xs w-8 h-8 flex items-center justify-center rounded-full shadow-sm" title="不宜雨天">
-                                                                        <Umbrella size={16} className="line-through"/>
-                                                                    </span>
-                                                                </div>
-                                                            )}
                                                         </div>
                                                     </div>
                                                     )
                                                 })}
                                                 </div>
                                             ) : (
-                                                <div className="text-center py-24 bg-white/50 rounded-3xl border border-slate-200 border-dashed mx-1">
-                                                    <p className="text-slate-500 text-sm font-medium">沒有符合條件的穿搭</p>
-                                                    {homeFilterColor && <p className="text-xs text-slate-400 mt-2">試著取消顏色篩選？</p>}
-                                                </div>
+                                                <EmptyState 
+                                                    message="目前沒有適合今天的穿搭" 
+                                                    subMessage="快去搭一套適合今天的穿搭吧！"
+                                                    buttonText="新增穿搭"
+                                                    action={() => handleViewChange('create', true)}
+                                                />
                                             )}
                                         </>
                                     )}
@@ -1005,7 +1033,7 @@
                                                 className={`w-full py-4 rounded-2xl text-sm font-bold transition-all flex items-center justify-center gap-2 
                                                     ${isAnalyzing 
                                                         ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                                                        : 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-lg shadow-cyan-200/50 active:scale-95'
+                                                        : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-200/50 active:scale-95'
                                                     }`}
                                                 disabled={isAnalyzing}
                                             >
@@ -1048,18 +1076,18 @@
                                         {/* 3. Rain Toggle */}
                                         <button 
                                             onClick={() => updateNewOutfit({ isNotRainFriendly: !newOutfit.isNotRainFriendly })}
-                                            className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${newOutfit.isNotRainFriendly ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}
+                                            className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${newOutfit.isNotRainFriendly ? 'bg-cyan-50 border-cyan-100' : 'bg-white border-slate-100'}`}
                                         >
                                             <div className="flex items-center gap-4">
-                                                <div className={`p-3 rounded-full ${newOutfit.isNotRainFriendly ? 'bg-red-200 text-red-600' : 'bg-slate-100 text-slate-400'}`}>
+                                                <div className={`p-3 rounded-full ${newOutfit.isNotRainFriendly ? 'bg-cyan-100 text-cyan-600' : 'bg-slate-100 text-slate-400'}`}>
                                                     <CloudRain size={20}/>
                                                 </div>
                                                 <div className="text-left">
-                                                    <span className={`text-sm font-bold block ${newOutfit.isNotRainFriendly ? 'text-red-700' : 'text-slate-600'}`}>下雨天不穿</span>
+                                                    <span className={`text-sm font-bold block ${newOutfit.isNotRainFriendly ? 'text-cyan-700' : 'text-slate-600'}`}>下雨天不穿</span>
                                                     <span className="text-xs text-slate-400 font-medium">若材質怕水或易髒請勾選</span>
                                                 </div>
                                             </div>
-                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${newOutfit.isNotRainFriendly ? 'bg-red-500 border-red-500' : 'border-slate-300 bg-white'}`}>
+                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${newOutfit.isNotRainFriendly ? 'bg-cyan-500 border-cyan-500' : 'border-slate-300 bg-white'}`}>
                                                 {newOutfit.isNotRainFriendly && <Check size={14} className="text-white"/>}
                                             </div>
                                         </button>
@@ -1082,21 +1110,24 @@
 
                             {view === 'manage' && (
                                 <div className="animate-fade-in">
-                                    <div className="flex justify-between items-end mb-6 px-1">
-                                        <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">全部穿搭</h2>
+                                    <div className="flex justify-between items-center mb-6 px-1">
+                                        <div className="flex items-baseline gap-2">
+                                            <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">全部穿搭</h2>
+                                            <span className="text-sm font-bold text-slate-400">{manageList.length} 件</span>
+                                        </div>
                                         <div className="flex items-center gap-2">
                                             <button onClick={() => setShowFilters(!showFilters)} className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${showFilters || activeFilterCount > 0 ? 'bg-cyan-500 text-white shadow-md shadow-cyan-200' : 'bg-white text-slate-400 shadow-sm border border-slate-100'}`}>
                                                 <Filter size={18}/>
                                             </button>
-                                            <span className="text-slate-500 text-xs font-bold bg-white px-3 py-2.5 rounded-full shadow-sm border border-slate-100">{manageList.length} 件</span>
                                         </div>
                                     </div>
 
                                     {/* LIST RENDERING RESTORED HERE */}
                                     {outfits.length === 0 ? (
                                         <EmptyState 
-                                            message="還沒有任何衣物" 
-                                            subMessage="開始整理你的衣櫃，讓生活更有條理！"
+                                            message="衣櫃空空如也" 
+                                            subMessage="快去新增第一套穿搭，讓我來推薦今天適合怎麼穿吧！"
+                                            buttonText="新增穿搭"
                                             action={() => handleViewChange('create', true)}
                                         />
                                     ) : (
@@ -1110,19 +1141,17 @@
                                                         <div className="flex items-start justify-between">
                                                             <div className="flex flex-wrap gap-1.5">
                                                                 {outfit.seasons.map(sid => <SeasonBadge key={sid} seasonId={sid} minimal />)}
-                                                                {outfit.isNotRainFriendly && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold bg-red-50 text-red-500 border border-red-100"><Umbrella size={10} className="line-through"/> 怕水</span>}
+                                                                {outfit.isNotRainFriendly && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold bg-cyan-50 text-cyan-600 border border-cyan-100"><Umbrella size={10} className="line-through"/> 怕水</span>}
                                                             </div>
                                                             <div className="flex gap-1 -mr-1">
-                                                                <button onClick={(e) => handleEdit(outfit, e)} className="p-2 rounded-full text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"><Pencil size={16}/></button>
-                                                                <button onClick={() => setDeleteId(outfit.id)} className="p-2 rounded-full text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={16}/></button>
+                                                                <button onClick={(e) => handleEdit(outfit, e)} className="p-2 rounded-full text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"><Pencil size={16}/></button>
+                                                                <button onClick={() => setDeleteId(outfit.id)} className="p-2 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={16}/></button>
                                                             </div>
                                                         </div>
                                                         
                                                         <p className="text-xs text-slate-600 leading-relaxed font-medium bg-slate-50 p-2.5 rounded-xl">
                                                             {outfit.highlight ? (
-                                                                <>
-                                                                    <span className="mr-1 text-base">💡</span>{outfit.highlight}
-                                                                </>
+                                                                outfit.highlight
                                                             ) : (
                                                                 <span className="text-slate-400 italic">暫無亮點描述</span>
                                                             )}
@@ -1134,152 +1163,145 @@
                                                     </div>
                                                 </div>
                                             )) : (
-                                                <div className="text-center py-16 bg-white/50 rounded-[2rem] border-2 border-white border-dashed">
-                                                    <div className="text-4xl mb-2">🧐</div>
-                                                    <div className="text-slate-500 font-bold">找不到符合條件的衣物</div>
-                                                    <div className="text-xs text-slate-400 mt-1">試著放寬篩選條件看看？</div>
-                                                </div>
+                                                <EmptyState 
+                                                    message="找不到符合條件的穿搭" 
+                                                    subMessage="試著放寬篩選條件，或是新增更多樣的穿搭組合吧！"
+                                                    // Removed action and buttonText to hide the button
+                                                />
                                             )}
                                         </div>
                                     )}
-
-                                    {/* Custom Delete Modal */}
-                                    {deleteId && (
-                                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-fade-in">
-                                            <div className="bg-white rounded-[2rem] p-6 shadow-2xl max-w-xs w-full border border-white/50">
-                                                <div className="flex flex-col items-center gap-4 text-center">
-                                                    <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center text-red-500 mb-1">
-                                                        <AlertCircle size={28}/>
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="text-xl font-bold text-slate-800">確定要刪除嗎？</h3>
-                                                        <p className="text-sm text-slate-500 mt-2 leading-relaxed">這件穿搭將會從你的衣櫃中永久消失，無法復原喔！</p>
-                                                    </div>
-                                                    <div className="flex gap-3 w-full mt-4">
-                                                        <button onClick={() => setDeleteId(null)} className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm">取消</button>
-                                                        <button onClick={confirmDelete} className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-200 text-sm">刪除</button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Filters (Bottom Sheet) - MOVED TO ROOT LEVEL */}
-                            {showFilters && (
-                                <>
-                                    <div 
-                                        className="fixed inset-0 z-[60] bg-slate-900/20 backdrop-blur-sm transition-opacity"
-                                        onClick={() => setShowFilters(false)}
-                                    ></div>
-                                    
-                                    <div className="fixed bottom-0 left-0 right-0 z-[70] bg-white rounded-t-[2rem] p-6 shadow-2xl animate-slide-up border-t border-slate-100 max-h-[85vh] flex flex-col">
-                                        <div className="flex justify-between items-center mb-6 flex-shrink-0">
-                                            <h3 className="font-bold text-slate-800 text-lg">篩選條件</h3>
-                                            <button onClick={() => setShowFilters(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
-                                        </div>
-                                        
-                                        <div className="space-y-6 overflow-y-auto flex-1 pb-4">
-                                            {/* Filter Options */}
-                                            <div>
-                                                <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">季節</span>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => setTempFilterSeason(null)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${!tempFilterSeason ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-100'}`}>全部</button>
-                                                    {SEASONS.map(s => (
-                                                        <button key={s.id} onClick={() => setTempFilterSeason(tempFilterSeason === s.id ? null : s.id)} className={`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors ${tempFilterSeason === s.id ? s.color : 'bg-white text-slate-400 border-slate-100'}`}>
-                                                            {s.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">顏色</span>
-                                                <div className="flex flex-wrap gap-2">
-                                                    <button onClick={() => setTempFilterColor(null)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${!tempFilterColor ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>全部</button>
-                                                    {COLORS.map(c => (
-                                                        <button key={c.id} onClick={() => setTempFilterColor(tempFilterColor === c.id ? null : c.id)} className={`w-8 h-8 rounded-full border flex items-center justify-center transition-transform ${tempFilterColor === c.id ? 'ring-2 ring-cyan-400 scale-110' : 'opacity-80'} ${c.id === 'white' && tempFilterColor !== c.id ? 'border-slate-200' : ''}`} style={{backgroundColor: c.hex}}>
-                                                            {tempFilterColor === c.id && <Check size={12} className={c.id === 'white' ? 'text-black' : 'text-white'}/>}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">特殊條件</span>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => setTempFilterRainFriendly(!tempFilterRainFriendly)} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${tempFilterRainFriendly ? 'bg-blue-100 text-blue-600 border-blue-200' : 'bg-white text-slate-400 border-slate-100'}`}>
-                                                        <Umbrella size={14}/> 雨天OK
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="pt-4 mt-auto border-t border-slate-100 flex gap-3 flex-shrink-0">
-                                                <button onClick={() => setShowFilters(false)} className="flex-1 bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl transition-colors">
-                                                取消
-                                                </button>
-                                                <button onClick={applyFilters} className="flex-[2] bg-slate-900 hover:bg-black text-white font-bold py-4 rounded-2xl transition-colors shadow-lg shadow-slate-200">
-                                                確認
-                                                </button>
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-
-                            {/* Location Modal - MOVED TO ROOT LEVEL */}
-                            {isLocationModalOpen && (
-                                <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
-                                    <div className="bg-white rounded-t-[2rem] md:rounded-[2rem] w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden shadow-2xl h-[70vh] md:h-auto">
-                                        <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
-                                            <div className="flex items-center gap-2">
-                                                {locationModalStep === 'city' && (
-                                                    <button onClick={handleBackToCountry} className="p-1 -ml-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors">
-                                                        <ChevronLeft size={24} />
-                                                    </button>
-                                                )}
-                                                <h3 className="font-bold text-slate-800 text-lg">
-                                                    {locationModalStep === 'country' ? '選擇國家' : selectedCountry}
-                                                </h3>
-                                            </div>
-                                            <button onClick={() => setIsLocationModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
-                                        </div>
-                                        
-                                        <div className="overflow-y-auto p-4 space-y-2 pb-8 scrollbar-hide h-full">
-                                            {locationModalStep === 'country' && (
-                                                uniqueCountries.map(country => (
-                                                    <button 
-                                                        key={country}
-                                                        onClick={() => handleSelectCountry(country)}
-                                                        className="w-full p-4 rounded-2xl flex items-center justify-between transition-all bg-slate-50 text-slate-800 hover:bg-slate-100 group"
-                                                    >
-                                                        <span className="font-bold text-base">{country}</span>
-                                                        <ChevronRight size={20} className="text-slate-300 group-hover:text-slate-500"/>
-                                                    </button>
-                                                ))
-                                            )}
-
-                                            {locationModalStep === 'city' && (
-                                                LOCATIONS.map((loc, index) => {
-                                                    if (loc.country !== selectedCountry) return null;
-                                                    const isSelected = locationIndex === index;
-                                                    return (
-                                                        <button 
-                                                            key={index}
-                                                            onClick={() => handleSelectCity(index)}
-                                                            className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${isSelected ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-                                                        >
-                                                            <span className={`font-bold text-base ${isSelected ? 'text-white' : 'text-slate-800'}`}>{loc.name}</span>
-                                                            {isSelected && <div className="bg-white/20 p-1 rounded-full"><Check size={16} className="text-white"/></div>}
-                                                        </button>
-                                                    );
-                                                })
-                                            )}
-                                        </div>
-                                    </div>
                                 </div>
                             )}
                         </div>
                     </div>
+
+                    {/* Filters & Modals MOVED to Root Level */}
+                    {showFilters && (
+                        <>
+                            <div 
+                                className="fixed inset-0 z-[60] bg-slate-900/20 backdrop-blur-sm transition-opacity"
+                                onClick={() => setShowFilters(false)}
+                            ></div>
+                            <div className="fixed bottom-0 left-0 right-0 z-[70] bg-white rounded-t-[2rem] p-6 shadow-2xl animate-slide-up border-t border-slate-100 max-h-[85vh] flex flex-col">
+                                <div className="flex justify-between items-center mb-6 flex-shrink-0">
+                                    <h3 className="font-bold text-slate-800 text-lg">篩選條件</h3>
+                                    <button onClick={() => setShowFilters(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
+                                </div>
+                                <div className="space-y-6 overflow-y-auto flex-1 pb-4">
+                                    <div>
+                                        <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">季節</span>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setTempFilterSeason(null)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${!tempFilterSeason ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-100'}`}>全部</button>
+                                            {SEASONS.map(s => (
+                                                <button key={s.id} onClick={() => setTempFilterSeason(tempFilterSeason === s.id ? null : s.id)} className={`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors ${tempFilterSeason === s.id ? s.color : 'bg-white text-slate-400 border-slate-100'}`}>
+                                                    {s.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">顏色</span>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button onClick={() => setTempFilterColor(null)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${!tempFilterColor ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>全部</button>
+                                            {COLORS.map(c => (
+                                                <button key={c.id} onClick={() => setTempFilterColor(tempFilterColor === c.id ? null : c.id)} className={`w-8 h-8 rounded-full border flex items-center justify-center transition-transform ${tempFilterColor === c.id ? 'ring-2 ring-cyan-400 scale-110' : 'opacity-80'} ${c.id === 'white' && tempFilterColor !== c.id ? 'border-slate-200' : ''}`} style={{backgroundColor: c.hex}}>
+                                                    {tempFilterColor === c.id && <Check size={12} className={c.id === 'white' ? 'text-black' : 'text-white'}/>}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <span className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-wider pl-1">特殊條件</span>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setTempFilterRainFriendly(!tempFilterRainFriendly)} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${tempFilterRainFriendly ? 'bg-blue-100 text-blue-600 border-blue-200' : 'bg-white text-slate-400 border-slate-100'}`}>
+                                                <Umbrella size={14}/> 雨天OK
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="pt-4 mt-auto border-t border-slate-100 flex gap-3 flex-shrink-0">
+                                        <button onClick={() => setShowFilters(false)} className="flex-1 bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl transition-colors">
+                                        取消
+                                        </button>
+                                        <button onClick={applyFilters} className="flex-[2] bg-slate-900 hover:bg-black text-white font-bold py-4 rounded-2xl transition-colors shadow-lg shadow-slate-200">
+                                        確定
+                                        </button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                    
+                    {/* Delete Modal - MOVED TO ROOT LEVEL */}
+                    {deleteId && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-fade-in">
+                            <div className="bg-white rounded-[2rem] p-6 shadow-2xl max-w-xs w-full border border-white/50">
+                                <div className="flex flex-col items-center gap-4 text-center">
+                                    <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center text-red-500 mb-1">
+                                        <AlertCircle size={28}/>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">確定要刪除嗎？</h3>
+                                        <p className="text-sm text-slate-500 mt-2 leading-relaxed">這件穿搭將會從你的衣櫃中永久消失，無法復原喔！</p>
+                                    </div>
+                                    <div className="flex gap-3 w-full mt-4">
+                                        <button onClick={() => setDeleteId(null)} className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm">取消</button>
+                                        <button onClick={confirmDelete} className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-200 text-sm">刪除</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isLocationModalOpen && (
+                        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
+                            <div className="bg-white rounded-t-[2rem] md:rounded-[2rem] w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden shadow-2xl h-[70vh] md:h-auto">
+                                <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                                    <div className="flex items-center gap-2">
+                                        {locationModalStep === 'city' && (
+                                            <button onClick={handleBackToCountry} className="p-1 -ml-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors">
+                                                <ChevronLeft size={24} />
+                                            </button>
+                                        )}
+                                        <h3 className="font-bold text-slate-800 text-lg">
+                                            {locationModalStep === 'country' ? '選擇國家' : selectedCountry}
+                                        </h3>
+                                    </div>
+                                    <button onClick={() => setIsLocationModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
+                                </div>
+                                <div className="overflow-y-auto p-4 space-y-2 pb-8 scrollbar-hide h-full">
+                                    {locationModalStep === 'country' && (
+                                        uniqueCountries.map(country => (
+                                            <button 
+                                                key={country}
+                                                onClick={() => handleSelectCountry(country)}
+                                                className="w-full p-4 rounded-2xl flex items-center justify-between transition-all bg-slate-50 text-slate-800 hover:bg-slate-100 group"
+                                            >
+                                                <span className="font-bold text-base">{country}</span>
+                                                <ChevronRight size={20} className="text-slate-300 group-hover:text-slate-500"/>
+                                            </button>
+                                        ))
+                                    )}
+                                    {locationModalStep === 'city' && (
+                                        LOCATIONS.map((loc, index) => {
+                                            if (loc.country !== selectedCountry) return null;
+                                            const isSelected = locationIndex === index;
+                                            return (
+                                                <button 
+                                                    key={index}
+                                                    onClick={() => handleSelectCity(index)}
+                                                    className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${isSelected ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                                                >
+                                                    <span className={`font-bold text-base ${isSelected ? 'text-white' : 'text-slate-800'}`}>{loc.name}</span>
+                                                    {isSelected && <div className="bg-white/20 p-1 rounded-full"><Check size={16} className="text-white"/></div>}
+                                                </button>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <TabBarMobile view={view} onViewChange={handleViewChange} />
                 </div>
