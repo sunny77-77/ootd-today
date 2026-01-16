@@ -177,6 +177,8 @@
         const ChevronDown = createLucideIcon('ChevronDown');
         const Key = createLucideIcon('Key');
         const ImageOff = createLucideIcon('ImageOff'); 
+        const Copy = createLucideIcon('Copy');
+        const Leaf = createLucideIcon('Leaf');
 
         // --- Gemini API Configuration ---
         const apiKey = ""; 
@@ -205,16 +207,20 @@
             { country: "韓國", name: "首爾", lat: 37.5665, lng: 126.9780 },
         ];
 
+        // 修正：季節改為 4 個
         const SEASONS = [
+            { id: 'spring', label: '春', desc: '20-25°C', icon: Wind, color: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
             { id: 'summer', label: '夏', desc: '> 25°C', icon: SunMedium, color: 'bg-orange-50 text-orange-500 border-orange-100' },
-            { id: 'spring_autumn', label: '春/秋', desc: '20-25°C', icon: Wind, color: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
+            { id: 'autumn', label: '秋', desc: '20-25°C', icon: Leaf, color: 'bg-amber-50 text-amber-600 border-amber-100' },
             { id: 'winter', label: '冬', desc: '< 20°C', icon: Snowflake, color: 'bg-sky-50 text-sky-600 border-sky-100' },
         ];
 
+        // 修正：季節配置對應 4 個
         const SEASON_CONFIG = {
+            spring: { months: [2, 3, 4], minTemp: 20, maxTemp: 25 }, 
             summer: { months: [5, 6, 7, 8], minTemp: 26 },
-            spring_autumn: { months: [3, 4, 9, 10], minTemp: 20, maxTemp: 25 },
-            winter: { months: [11, 0, 1, 2], maxTemp: 19 }
+            autumn: { months: [9, 10, 11], minTemp: 20, maxTemp: 25 },
+            winter: { months: [11, 0, 1], maxTemp: 19 }
         };
 
         const COLORS = [
@@ -232,11 +238,12 @@
         ];
 
         // --- NEW INITIAL OUTFITS (Realistic Mock Data - Neutral Descriptions) ---
+        // 修正：將 spring_autumn 拆分為 spring, autumn
         const INITIAL_OUTFITS = [
             {
                 id: 1,
                 image: "https://i.postimg.cc/Kk1mJwNw/IMG-4886.jpg",
-                seasons: ['winter', 'spring_autumn'],
+                seasons: ['winter', 'spring', 'autumn'],
                 isNotRainFriendly: false, 
                 colors: ['black', 'gray'], 
                 lastWorn: new Date().toISOString(),
@@ -256,7 +263,7 @@
             {
                 id: 3,
                 image: "https://i.postimg.cc/Kk1mJwf2/IMG-4888.jpg",
-                seasons: ['spring_autumn'],
+                seasons: ['spring', 'autumn'],
                 isNotRainFriendly: true,
                 colors: ['white', 'brown'],
                 lastWorn: new Date().toISOString(),
@@ -276,7 +283,7 @@
             {
                 id: 5,
                 image: "https://i.postimg.cc/2b1C2MGm/IMG-4890.jpg",
-                seasons: ['spring_autumn', 'winter'],
+                seasons: ['spring', 'autumn', 'winter'],
                 isNotRainFriendly: false,
                 colors: ['green', 'black'],
                 lastWorn: new Date().toISOString(),
@@ -286,7 +293,7 @@
             {
                 id: 6,
                 image: "https://i.postimg.cc/62FtScbx/IMG-4891.jpg",
-                seasons: ['summer', 'spring_autumn'],
+                seasons: ['summer', 'spring', 'autumn'],
                 isNotRainFriendly: false,
                 colors: ['black', 'white'],
                 lastWorn: new Date().toISOString(),
@@ -296,7 +303,7 @@
             {
                 id: 7,
                 image: "https://i.postimg.cc/sQbs8mHR/IMG-4909.jpg",
-                seasons: ['spring_autumn'],
+                seasons: ['spring', 'autumn'],
                 isNotRainFriendly: true,
                 colors: ['purple', 'white'],
                 lastWorn: new Date().toISOString(),
@@ -326,7 +333,7 @@
             {
                 id: 10,
                 image: "https://i.postimg.cc/Q9vhPmYX/IMG-4912.jpg",
-                seasons: ['spring_autumn', 'summer'],
+                seasons: ['spring', 'autumn', 'summer'],
                 isNotRainFriendly: false,
                 colors: ['white', 'yellow'],
                 lastWorn: new Date().toISOString(),
@@ -574,6 +581,10 @@
 
             const [deleteId, setDeleteId] = useState(null);
 
+            // Duplicate Detection States
+            const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+            const [duplicateOutfit, setDuplicateOutfit] = useState(null);
+
             // AI States
             const [isAnalyzing, setIsAnalyzing] = useState(false);
             
@@ -668,23 +679,32 @@
                 const currentMonth = new Date().getMonth();
                 const targetSeasons = new Set();
                 
+                // 修正：調整天氣與 4 個季節的對應邏輯
                 if (hasWeatherData) {
                     if (avgTemp < 20) {
                         targetSeasons.add('winter');
-                        if (avgTemp >= 18) targetSeasons.add('spring_autumn');
+                        if (avgTemp >= 18) {
+                            targetSeasons.add('spring');
+                            targetSeasons.add('autumn');
+                        }
                     }
                     else if (avgTemp >= 20 && avgTemp < 26) {
-                        targetSeasons.add('spring_autumn');
+                        targetSeasons.add('spring');
+                        targetSeasons.add('autumn');
                         if (avgTemp >= 24) targetSeasons.add('summer');
                         if (avgTemp <= 22) targetSeasons.add('winter');
                     }
                     else {
                         targetSeasons.add('summer');
-                        if (avgTemp <= 28) targetSeasons.add('spring_autumn');
+                        if (avgTemp <= 28) {
+                            targetSeasons.add('spring');
+                            targetSeasons.add('autumn');
+                        }
                     }
                 } else {
                     if (SEASON_CONFIG.summer.months.includes(currentMonth)) targetSeasons.add('summer');
-                    else if (SEASON_CONFIG.spring_autumn.months.includes(currentMonth)) targetSeasons.add('spring_autumn');
+                    else if (SEASON_CONFIG.spring.months.includes(currentMonth)) targetSeasons.add('spring');
+                    else if (SEASON_CONFIG.autumn.months.includes(currentMonth)) targetSeasons.add('autumn');
                     else targetSeasons.add('winter');
                 }
 
@@ -821,9 +841,21 @@
                     return;
                 }
 
+                // --- DUPLICATE CHECK START ---
+                // 檢查是否與現有穿搭的圖片完全相同 (針對 Base64 字串比對)
+                // 注意：這主要適用於使用者自己上傳的圖片。預設的 URL 圖片因為來源不同可能無法比對。
+                const existingDuplicate = outfits.find(o => o.image === newOutfit.image);
+                if (existingDuplicate) {
+                    setDuplicateOutfit(existingDuplicate);
+                    setShowDuplicateModal(true);
+                    return; // 停止後續 AI 分析
+                }
+                // --- DUPLICATE CHECK END ---
+
                 setIsAnalyzing(true);
                 try {
-                    const prompt = `分析圖片: 季節(summer/spring_autumn/winter), 色系(${COLORS.map(c=>c.id).join(',')})。請忽略人物的頭髮顏色、膚色，只針對服裝進行色系分析。請用繁體中文提供一句簡短的穿搭亮點描述(highlight)，語氣時尚專業，不要使用Emoji，20字以內。回傳JSON格式。`;
+                    // 修正：提示詞增加 4 個季節選項
+                    const prompt = `分析圖片: 季節(spring/summer/autumn/winter), 色系(${COLORS.map(c=>c.id).join(',')})。請忽略人物的頭髮顏色、膚色，只針對服裝進行色系分析。請用繁體中文提供一句簡短的穿搭亮點描述(highlight)，語氣時尚專業，不要使用Emoji，20字以內。回傳JSON格式。`;
                     const jsonStr = await generateGeminiContent(effectiveKey, prompt, newOutfit.image, true);
                     
                     try {
@@ -861,6 +893,62 @@
                 }
             };
 
+            const proceedWithAnalysis = async () => {
+                setShowDuplicateModal(false);
+                setDuplicateOutfit(null);
+                
+                const effectiveKey = getStoredApiKey();
+                if (!effectiveKey || !newOutfit.image) return;
+
+                setIsAnalyzing(true);
+                try {
+                    // 修正：提示詞增加 4 個季節選項
+                    const prompt = `分析圖片: 季節(spring/summer/autumn/winter), 色系(${COLORS.map(c=>c.id).join(',')})。請忽略人物的頭髮顏色、膚色，只針對服裝進行色系分析。請用繁體中文提供一句簡短的穿搭亮點描述(highlight)，語氣時尚專業，不要使用Emoji，20字以內。回傳JSON格式。`;
+                    const jsonStr = await generateGeminiContent(effectiveKey, prompt, newOutfit.image, true);
+                    
+                    try {
+                        const result = JSON.parse(cleanJsonString(jsonStr)); 
+                        
+                        if (!result || (!result.seasons && !result.colors)) {
+                            showToast("AI 無法辨識圖片內容，請重試或手動選擇。", "error");
+                            return;
+                        }
+
+                        updateNewOutfit({
+                            seasons: result.seasons || newOutfit.seasons,
+                            colors: result.colors || newOutfit.colors,
+                            highlight: result.highlight || "" 
+                        });
+                        showToast("AI 分析完成！", "success");
+                    } catch (parseError) {
+                        console.error("JSON Parse Error:", parseError, jsonStr);
+                        showToast("AI 回傳格式錯誤，請重試", "error");
+                    }
+                } catch (e) {
+                    console.error("AI Analyze Error:", e);
+                    showToast("AI 連線失敗，請檢查網路", "error");
+                } finally {
+                    setIsAnalyzing(false);
+                }
+            };
+
+            const viewExistingDuplicate = () => {
+                if (duplicateOutfit) {
+                    // 切換到該穿搭的編輯模式
+                    setShowDuplicateModal(false);
+                    setNewOutfit({
+                        id: duplicateOutfit.id,
+                        image: duplicateOutfit.image,
+                        seasons: duplicateOutfit.seasons || [],
+                        isNotRainFriendly: duplicateOutfit.isNotRainFriendly || false,
+                        colors: duplicateOutfit.colors || [],
+                        highlight: duplicateOutfit.highlight || ""
+                    });
+                    // 如果原本就在 create 頁面，其實已經是編輯狀態，但這裡為了確保一致性
+                    // 我們可以保持在 create 頁面並填入舊資料
+                }
+            };
+
             const generateGeminiContent = async (key, prompt, imageBase64 = null, returnJson = false) => {
                 try {
                     let inlineDataPart = null;
@@ -879,7 +967,8 @@
                     
                     if (returnJson) {
                         if (prompt.includes("分析圖片")) {
-                            payload.generationConfig = { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { seasons: { type: "ARRAY", items: { type: "STRING", enum: ["summer", "spring_autumn", "winter"] } }, colors: { type: "ARRAY", items: { type: "STRING", enum: COLORS.map(c => c.id) } }, highlight: { type: "STRING" } } } };
+                            // 修正：Schema 增加 4 個季節選項
+                            payload.generationConfig = { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { seasons: { type: "ARRAY", items: { type: "STRING", enum: ["spring", "summer", "autumn", "winter"] } }, colors: { type: "ARRAY", items: { type: "STRING", enum: COLORS.map(c => c.id) } }, highlight: { type: "STRING" } } } };
                         }
                     }
                     
@@ -1397,6 +1486,39 @@
                                     <div className="flex gap-3 w-full mt-4">
                                         <button onClick={() => setDeleteId(null)} className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm">取消</button>
                                         <button onClick={confirmDelete} className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-200 text-sm">刪除</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Duplicate Warning Modal (Added) */}
+                    {showDuplicateModal && duplicateOutfit && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-in">
+                            <div className="bg-white rounded-[2rem] p-6 shadow-2xl max-w-xs w-full border border-white/50">
+                                <div className="flex flex-col items-center gap-4 text-center">
+                                    <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 mb-1">
+                                        <Copy size={28}/>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">發現相似穿搭</h3>
+                                        <p className="text-sm text-slate-500 mt-2 leading-relaxed">你的衣櫃裡好像已經有這件衣服了！</p>
+                                    </div>
+                                    
+                                    {/* Preview of Existing Outfit */}
+                                    <div className="w-full bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-center gap-3 text-left">
+                                        <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0">
+                                            <OutfitImage src={duplicateOutfit.image} className="w-full h-full object-cover" alt="Old"/>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-bold text-slate-700 truncate">{duplicateOutfit.highlight || "未命名穿搭"}</p>
+                                            <p className="text-[10px] text-slate-400 mt-0.5">{formatDate(duplicateOutfit.createdAt || duplicateOutfit.lastWorn)}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-3 w-full mt-2">
+                                        <button onClick={viewExistingDuplicate} className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm">查看舊穿搭</button>
+                                        <button onClick={proceedWithAnalysis} className="flex-1 py-3.5 rounded-2xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-200 text-sm">繼續分析</button>
                                     </div>
                                 </div>
                             </div>
