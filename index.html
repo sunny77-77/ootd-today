@@ -179,6 +179,7 @@
         const ImageOff = createLucideIcon('ImageOff'); 
         const Copy = createLucideIcon('Copy');
         const Leaf = createLucideIcon('Leaf');
+        const Flower = createLucideIcon('Flower');
 
         // --- Gemini API Configuration ---
         const apiKey = ""; 
@@ -209,7 +210,7 @@
 
         // 修正：季節改為 4 個
         const SEASONS = [
-            { id: 'spring', label: '春', desc: '20-25°C', icon: Wind, color: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
+            { id: 'spring', label: '春', desc: '20-25°C', icon: Flower, color: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
             { id: 'summer', label: '夏', desc: '> 25°C', icon: SunMedium, color: 'bg-orange-50 text-orange-500 border-orange-100' },
             { id: 'autumn', label: '秋', desc: '20-25°C', icon: Leaf, color: 'bg-amber-50 text-amber-600 border-amber-100' },
             { id: 'winter', label: '冬', desc: '< 20°C', icon: Snowflake, color: 'bg-sky-50 text-sky-600 border-sky-100' },
@@ -1375,7 +1376,14 @@
                                                     <div className="flex-1 min-w-0 flex flex-col gap-2 py-1">
                                                         <div className="flex items-start justify-between">
                                                             <div className="flex flex-wrap gap-1.5">
-                                                                {outfit.seasons.map(sid => <SeasonBadge key={sid} seasonId={sid} minimal />)}
+                                                                {/* 修正：將季節標籤依照 春->夏->秋->冬 排序顯示 */}
+                                                                {[...outfit.seasons]
+                                                                    .sort((a, b) => {
+                                                                        const seasonOrder = ['spring', 'summer', 'autumn', 'winter'];
+                                                                        return seasonOrder.indexOf(a) - seasonOrder.indexOf(b);
+                                                                    })
+                                                                    .map(sid => <SeasonBadge key={sid} seasonId={sid} minimal />)
+                                                                }
                                                                 {outfit.isNotRainFriendly && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold bg-cyan-50 text-cyan-600 border border-cyan-100"><Umbrella size={10} className="line-through"/> 怕水</span>}
                                                             </div>
                                                             <div className="flex gap-1 -mr-1">
